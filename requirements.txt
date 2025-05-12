@@ -1,0 +1,16 @@
+requests==2.32.2
+watchfiles==0.24.0
+uvicorn==0.29.0
+pyyaml==6.0.1
+fastapi==0.111.0
+numpy==1.22.3
+pandas==2.0.0
+scipy==1.10.0
+scikit-learn==0.24.2
+networkx==3.0
+loguru==0.7.0
+lightgbm==3.3.5
+rec-preprocess==0.2.5
+APScheduler==3.10.4
+aiohttp==3.8.3
+pandarallel==1.6.5
