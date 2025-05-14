@@ -10,7 +10,7 @@ scikit-learn==0.24.2
 networkx==3.0
 loguru==0.7.0
 lightgbm==3.3.5
-rec-preprocess==0.2.5
+# rec-preprocess==0.2.5 # 暂时注释此包，因为它可能是内部包
 APScheduler==3.10.4
 aiohttp==3.8.3
 pandarallel==1.6.5

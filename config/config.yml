@@ -15,6 +15,7 @@ datasets:
       - holdings
       - country
       - prefer_bid
+      - user_propernoun
       - push_title
       - push_content
       - item_code
@@ -193,6 +194,43 @@ process: # 普通单列数据的预处理
           func_parameters:
             vocabulary_size: 10000
 
+    - feat_name: user_propernoun_hash
+      feat_type: varlen_sparse
+      vocabulary_size: 10000
+      embedding_dim: 8
+      input_sample: "apple#1.02|nike#1.02"
+      operations:
+        - col_in: user_propernoun
+          col_out: user_propernoun
+          func_name: fillna
+          func_parameters:
+            na_value: "null#0"
+        - col_in: user_propernoun
+          col_out: user_propernoun
+          func_name: split
+          func_parameters:
+            sep: "|"
+        - col_in: user_propernoun
+          col_out: user_propernoun
+          func_name: seperation
+          func_parameters:
+            sep: "#"
+        - col_in: user_propernoun
+          col_out: user_propernoun_code
+          func_name: list_get
+          func_parameters:
+            item_index: 0
+        - col_in: user_propernoun_code
+          col_out: user_propernoun_code
+          func_name: padding
+          func_parameters:
+            max_len: 5
+            pad_value: "null"
+        - col_in: user_propernoun_code
+          col_out: user_propernoun_code_hash
+          func_name: list_hash
+          func_parameters:
+            vocabulary_size: 10000
 
     - feat_name: push_title_hash
       feat_type: sparse
@@ -340,6 +378,17 @@ interactions: # 特征交叉
       operations:
         - col_in: [item_code, hold_bid_code]
           col_out: hold_bid_cross
+          func_name: has_intersection
+          func_parameters:
+            exclude: ["null", "0"]
+
+    - feat_name: propernoun_cross
+      feat_type: sparse
+      vocabulary_size: 2
+      embedding_dim: 8
+      operations:
+        - col_in: [tagIds, user_propernoun_code]
+          col_out: propernoun_cross
           func_name: has_intersection
           func_parameters:
             exclude: ["null", "0"]

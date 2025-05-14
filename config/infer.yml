@@ -1,5 +1,5 @@
 ml_model_dir: "checkpoint/model.pth"
-ml_model_hdfs_dir: "dongshaojie/ainvest_push/tree_model"
+ml_model_hdfs_dir: "dongshaojie/ainvest_push/tree_model_20250512"
 dowload_start_hour: 3
 dowload_start_minute: 0
 user_data_dir: data/user
@@ -20,6 +20,7 @@ data_columns:
   - holdings
   - country
   - prefer_bid
+  - user_propernoun
 varlen_max_col_num: 5
 push_server_url: http://aime-recsys-push-server-prod:10010/aime/recsys/api/push/v2
 push_server_url_v3: http://aime-recsys-push-server-prod:10010/aime/recsys/api/push/v3
