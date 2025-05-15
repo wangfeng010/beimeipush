@@ -70,7 +70,21 @@ class PushClassifier:
                 names=trainset_cfg.raw_columns,
             )
             logger.debug(f"train data: {df.head(10)}")
+            
+            # 预处理时间格式: 统一处理带毫秒和不带毫秒的时间戳
+            def normalize_timestamp(time_str):
+                if isinstance(time_str, str):
+                    if '.' in time_str:  # 包含毫秒
+                        # 移除毫秒部分
+                        return time_str.split('.')[0]
+                return time_str
+                
+            # 应用时间格式标准化
             x = df
+            if 'create_time' in x.columns:
+                x['create_time'] = x['create_time'].apply(normalize_timestamp)
+                logger.info(f"标准化时间格式完成，示例: {x['create_time'].head(3).tolist()}")
+                
             x = self._data_preprocess(x)
             feat = self._feat_selection(x, self.varlen_max)
             label = x[self.cfg.datasets.trainset.label_columns]
