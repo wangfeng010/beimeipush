@@ -35,38 +35,11 @@ class PushClassifier:
         pipelines = self.cfg.process.pipelines + self.cfg.interactions.pipelines
         for pipe in pipelines:
             for op in pipe.operations:
-                try:
-                    x = run_one_op_pd(x, op)
-                except Exception as e:
-                    logger.error(f"处理特征 {op.col_in} -> {op.col_out} 时出错: {e}")
-                    # 如果是输出列不存在，添加一个默认列
-                    if isinstance(op.col_out, str) and op.col_out not in x.columns:
-                        logger.warning(f"输出列 {op.col_out} 不存在，添加默认空列")
-                        x[op.col_out] = None
-                        
-        
+                x = run_one_op_pd(x, op)
         # label
         for pipe in self.cfg.label_process.pipelines:
             for op in pipe.operations:
-                try:
-                    x = run_one_op_pd(x, op)
-                except Exception as e:
-                    logger.error(f"处理标签 {op.col_in} -> {op.col_out} 时出错: {e}")
-                    if isinstance(op.col_out, str) and op.col_out not in x.columns:
-                        logger.warning(f"输出列 {op.col_out} 不存在，添加默认空列")
-                        x[op.col_out] = None
-        
-        # 确保所有需要的特征列都存在
-        missing_columns = []
-        for feat in self.cfg.feat_names:
-            if feat not in x.columns:
-                logger.warning(f"特征列 {feat} 不存在，添加默认空列")
-                x[feat] = None
-                missing_columns.append(feat)
-        
-        if missing_columns:
-            logger.error(f"缺失的特征列: {missing_columns}")
-        
+                x = run_one_op_pd(x, op)
         out_columns = self.cfg.feat_names + self.cfg.datasets.trainset.label_columns
         return x[out_columns]
 
@@ -74,24 +47,14 @@ class PushClassifier:
         names_set = set(self.cfg.feat_names)
 
         for feat_name in self.cfg.model.varlen_sparse_feat_names:
-            try:
-                x_explode = x[feat_name].apply(pd.Series)
-                out_names = [feat_name + f"_{i}" for i in range(x_explode.columns.stop)][
-                    :max_col_num
-                ]
-                in_columns = [i for i in range(x_explode.columns.stop)][:max_col_num]
-                x[out_names] = pd.DataFrame(x_explode[in_columns], index=x.index)
-                names_set.remove(feat_name)
-                names_set = names_set.union(set(out_names))
-            except Exception as e:
-                logger.error(f"处理变长特征 {feat_name} 时出错: {e}")
-                # 为这个变长特征创建默认的展开列
-                out_names = [feat_name + f"_{i}" for i in range(max_col_num)]
-                for col in out_names:
-                    x[col] = None
-                names_set.remove(feat_name)
-                names_set = names_set.union(set(out_names))
-        
+            x_explode = x[feat_name].apply(pd.Series)
+            out_names = [feat_name + f"_{i}" for i in range(x_explode.columns.stop)][
+                :max_col_num
+            ]
+            in_columns = [i for i in range(x_explode.columns.stop)][:max_col_num]
+            x[out_names] = pd.DataFrame(x_explode[in_columns], index=x.index)
+            names_set.remove(feat_name)
+            names_set = names_set.union(set(out_names))
         return x[list(names_set)]
 
     def _prepare_input(self, trainset_cfg):
