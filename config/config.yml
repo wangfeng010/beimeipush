@@ -227,7 +227,7 @@ process: # 普通单列数据的预处理
             max_len: 5
             pad_value: "null"
         - col_in: user_propernoun_code
-          col_out: user_propernoun_code_hash
+          col_out: user_propernoun_hash
           func_name: list_hash
           func_parameters:
             vocabulary_size: 10000

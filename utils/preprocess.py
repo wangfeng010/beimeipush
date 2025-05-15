@@ -17,7 +17,7 @@ def int_max(x: int, max_value: int) -> int:
 
 
 def remove_items(x: List[Any], target_values: List[Any]):
-    residual =  set(x) - set(target_values)
+    residual = set(x) - set(target_values)
     if not residual:
         return x
     return [i for i in x if i not in target_values]

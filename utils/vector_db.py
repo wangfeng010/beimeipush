@@ -27,10 +27,10 @@ def db_batch_save(
     requests.Response
         _description_
     """
-    assert len(vector_list) == len(
-        user_list
-    ), f"vector number and user number must be equal.\
+    assert len(vector_list) == len(user_list), (
+        f"vector number and user number must be equal.\
         but got len(vector)={len(vector_list)} and len(user)={len(user_list)}."
+    )
     post_map = dict()
     for uid, vec in zip(user_list, vector_list):
         post_map[str(uid)] = {"user_id": str(uid), "vector": vec}

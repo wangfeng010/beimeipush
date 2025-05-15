@@ -88,13 +88,37 @@ class PushClassifier:
         )
         train_data = lgb.Dataset(X_train, label=y_train)
         val_data = lgb.Dataset(X_val, label=y_val)
-        model = lgb.train(
-            self.model_config,
-            train_data,
-            valid_sets=[val_data],
-            feature_name=list(X.columns),
-        )
+
+        # 配置日志文件
+        log_file = "lgb_train.log"
+
+        # 配置回调函数列表
+        callbacks = [
+            lgb.callback.log_evaluation(period=10),  # 每10次迭代记录一次
+        ]
+
+        # 打开文件用于写入日志
+        with open(log_file, "w") as f:
+            # 创建回调函数，将输出写入文件
+            def callback_log(env):
+                iteration = env.iteration
+                val_auc = env.evaluation_result_list[0][2]
+                f.write(f"Iteration: {iteration}, val AUC: {val_auc}\n")
+                f.flush()  # 确保立即写入
+
+            callbacks.append(callback_log)
+
+            model = lgb.train(
+                self.model_config,
+                train_data,
+                valid_sets=[val_data],
+                feature_name=list(X.columns),
+                callbacks=callbacks,
+            )
+
         model.save_model("model.pth")
+
+        return log_file  # 返回日志文件路径
 
 
 if __name__ == "__main__":

@@ -46,7 +46,7 @@ def get_multi_data_optimized(
 ) -> Dict[str, str]:
     """
     获取多天的数据（优化版）
-    
+
     Parameters
     ----------
     sql_path : Path
@@ -61,7 +61,7 @@ def get_multi_data_optimized(
         训练文件的最大数量, by default 10
     min_file_size : int, optional
         最小文件大小(KB), by default 1024
-        
+
     Returns
     -------
     Dict[str, str]
@@ -74,10 +74,10 @@ def get_multi_data_optimized(
     sqls = dict()
     for i in range(past_day):
         # 计算当前日期
-        p_date = (
-            data_date - datetime.timedelta(days=past_day-1-i)
-        ).strftime("%Y%m%d")
-        
+        p_date = (data_date - datetime.timedelta(days=past_day - 1 - i)).strftime(
+            "%Y%m%d"
+        )
+
         # 解析SQL
         sql = parse_sql(sql_path, p_date)
         sqls[p_date] = sql
@@ -114,7 +114,7 @@ def download_from_temp_table(
 ):
     """
     从临时结果表中下载数据
-    
+
     Parameters
     ----------
     sql_path : Path
@@ -129,7 +129,7 @@ def download_from_temp_table(
         最小文件大小(KB), by default 1024
     max_file_num : int, optional
         保留的最大文件数量, by default 10
-    
+
     Returns
     -------
     bool
@@ -138,46 +138,51 @@ def download_from_temp_table(
     # 设置默认下载目录
     if download_dir is None:
         download_dir = sql_path.parent / "train"
-    
+
     # 确保下载目录存在
     os.makedirs(download_dir, exist_ok=True)
-    
+
     success_count = 0
-    
+
     # 下载指定天数的数据
     for i in range(past_day):
         # 计算要下载的日期
         data_date = datetime.datetime.now() - datetime.timedelta(days=i + shift_day)
         p_date = data_date.strftime("%Y%m%d")
-        
+
         # 解析SQL
         sql = parse_sql(sql_path, p_date)
         logger.info(f"date={p_date}, sql=\n{sql}")
-        
+
         # 设置下载文件路径
         file_path = download_dir / f"{p_date}.csv"
-        
+
         try:
             # 执行SQL并下载数据
             logger.info(f"downloading data from hive to {file_path}")
             hexecute(sql, file_path)
-            
+
             # 检查文件是否下载成功
-            if file_path.exists() and os.path.getsize(file_path) >= min_file_size * 1024:
+            if (
+                file_path.exists()
+                and os.path.getsize(file_path) >= min_file_size * 1024
+            ):
                 logger.info(f"Successfully downloaded {file_path}")
                 success_count += 1
             else:
                 # 文件太小，可能是数据问题
                 if file_path.exists():
                     os.remove(file_path)
-                logger.warning(f"File size smaller than {min_file_size}KB. Removed {file_path}")
+                logger.warning(
+                    f"File size smaller than {min_file_size}KB. Removed {file_path}"
+                )
         except Exception as e:
             logger.error(f"Error downloading data for {p_date}: {e}")
-    
+
     # 清理旧文件，保留最新的文件
     if max_file_num > 0:
         remove_dir(download_dir, max_num=max_file_num)
-    
+
     logger.info(f"Successfully downloaded {success_count} out of {past_day} files")
     return success_count > 0
 
@@ -188,7 +193,7 @@ def download_user_data(data_dir: Path, sql_path: Path, sql_params: dict) -> bool
 
     该函数首先读取SQL文件，将其内容格式化为特定的日期，然后执行SQL查询并将结果保存到指定目录。
     如果下载的数据文件大小大于4096字节，则认为下载成功；否则，删除文件并记录警告信息。
-    
+
     :param data_dir: 保存下载数据的目录路径。
     :param sql_path: 包含SQL查询的文件路径。
     :param sql_params: 用于格式化SQL查询的日期字符串。
@@ -235,7 +240,7 @@ def get_multi_data(
 ) -> Dict[str, str]:
     """
     获取多天的数据 - 与train.py兼容的接口
-    
+
     Parameters
     ----------
     sql_path : Path
@@ -250,7 +255,7 @@ def get_multi_data(
         训练文件的最大数量, by default 10
     min_file_size : int, optional
         最小文件大小(KB), by default 1024
-        
+
     Returns
     -------
     Dict[str, str]
@@ -262,9 +267,9 @@ def get_multi_data(
         past_day=past_day,
         shift_day=shift_day,
         min_file_size=min_file_size,
-        max_file_num=max_file_num
+        max_file_num=max_file_num,
     )
-    
+
     # 为了兼容旧版接口，返回一个空字典
     return {}
 
