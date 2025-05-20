@@ -103,6 +103,32 @@ class PushClassifier:
         )
         model.save_model("model.pth")
 
+        # 分析并输出特征重要性
+        importance = model.feature_importance(importance_type='gain')
+        feature_names = model.feature_name()
+        
+        # 创建特征重要性数据框并排序
+        feature_importance_df = pd.DataFrame({
+            'Feature': feature_names,
+            'Importance': importance
+        })
+        feature_importance_df = feature_importance_df.sort_values(
+            by='Importance', ascending=False
+        )
+        
+        # 保存特征重要性到文件
+        importance_file = "feature_importance.csv"
+        feature_importance_df.to_csv(importance_file, index=False)
+        
+        # 输出到日志
+        logger.info("Top 20 important features:")
+        for i, row in feature_importance_df.head(20).iterrows():
+            logger.info(f"Feature {row['Feature']}: {row['Importance']}")
+            
+        # 检查是否有特征过于重要，可能表明数据泄露
+        if feature_importance_df['Importance'].max() / feature_importance_df['Importance'].sum() > 0.5:
+            logger.warning("Possible data leakage detected: A single feature contributes to more than 50% of the total importance")
+
 
 if __name__ == "__main__":
     push_classifier = PushClassifier("config/config.yml", "config/model.yml")
