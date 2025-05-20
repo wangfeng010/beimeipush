@@ -252,6 +252,3 @@ http://localhost:12333/predict/ \
     ]
 }'
 ```
-
-# beimeipush
-本项目是基于LightGBM的美股推送消息排序系统

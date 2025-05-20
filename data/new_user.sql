@@ -3,8 +3,7 @@ select
     kyc.watchlists as watchlists,
     kyc.holdings as holdings,
     kyc.country as country,
-    kyc.prefer_bid as prefer_bid,
-    kyc.user_propernoun as user_propernoun
+    kyc.prefer_bid as prefer_bid
 from
     (
         select
@@ -66,19 +65,12 @@ from
                     and l_value is not null then l_value
                     else null
                 end
-            ) as prefer_bid,
-            max(
-                case
-                    when l_code = 'BM230'
-                    and l_value is not null then l_value
-                    else null
-                end
-            ) as user_propernoun
+            ) as prefer_bid
         from
             db_dws.dws_crd_lb_v_dd
         where
             p_date = '{now}'
-            and l_code in ('BM79', 'BM176', 'BM210', 'BM55', 'BM70', 'BM230')
+            and l_code in ('BM79', 'BM176', 'BM210', 'BM55', 'BM70')
             and person_id > 0
         group by
             person_id
