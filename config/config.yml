@@ -1,10 +1,10 @@
 datasets:
   trainset:
     data_dir: data/train
-    sep: "\t"
+    sep: ","
     chunksize: null
     file_num: 7
-    header: null
+    header: 0
     label_columns:
       - log_type
     raw_columns:

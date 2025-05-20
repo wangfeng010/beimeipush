@@ -132,13 +132,17 @@ class ServicesConfig(BaseModel):
 
 
 class TrainConfig(BaseModel):
-    emb_dim: int = 8
-    query_dim_hidden: int = 64
-    user_dim_hidden: int = 64
-    dim_out: int = 32
-    margin: float = 1.0
-    bias: bool = True
-    activation: str = "relu"
+    boosting_type: str = "gbdt"
+    num_leaves: int
+    max_depth: int
+    learning_rate: float
+    metric: str = "auc"
+    objective: str = "binary"
+    feature_fraction: float
+    num_iterations: int
+    early_stopping_rounds: int
+    subsample: float
+    colsample_bytree: float
 
 
 class ModelConfig(BaseModel):
