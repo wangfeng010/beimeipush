@@ -1,0 +1,204 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+MLP Model for Push Notification
+"""
+
+import tensorflow as tf
+from typing import Dict, List, Any
+
+# 导入light_ctr包中的特征处理器
+from light_ctr.data.single_feature import SINGLE_PROCESSOR_DICT
+from light_ctr.data.cross_feature import CROSS_PROCESSOR_DICT
+
+
+class CustomFillNaString(tf.keras.layers.Layer):
+    """
+    对输入特征进行空字符串的填充，适用于CSV数据。
+    """
+
+    def __init__(self, fill_value="0", **kwargs):
+        super(CustomFillNaString, self).__init__(**kwargs)
+        self.fill_value = fill_value  # 用于填充空字符串的值
+
+    def call(self, inputs):
+        # 确保输入是字符串类型
+        inputs = tf.strings.as_string(inputs)
+        
+        # 使用tf.where和tf.equal来替换空字符串
+        condition = tf.equal(inputs, "")
+        # 将条件为True的位置替换为fill_value
+        filled_output = tf.where(condition, self.fill_value, inputs)
+        return filled_output
+
+    def get_config(self):
+        config = super(CustomFillNaString, self).get_config()
+        config.update({"fill_value": self.fill_value})
+        return config
+
+
+class MLP(tf.keras.Model):
+    """多层感知器模型，用于推送通知二分类"""
+
+    def __init__(self, pipelines_config, train_config=None):
+        super(MLP, self).__init__()
+        
+        # 为模型注册自定义处理器
+        custom_processors = {"CustomFillNaString": CustomFillNaString}
+        # 合并处理器字典
+        self.single_processor_dict = {**SINGLE_PROCESSOR_DICT, **custom_processors}
+        self.cross_processor_dict = CROSS_PROCESSOR_DICT
+        
+        # 从训练配置获取模型参数
+        if train_config is None:
+            # 默认值 - 更简单的网络结构
+            layers = [64, 32]
+            dropout_rates = [0.3, 0.3]
+            l2_reg = 0.001
+        else:
+            # 如果train_config中有模型配置，则使用它
+            if 'model' in train_config:
+                layers = train_config['model'].get('layers', [64, 32])
+                dropout_rates = train_config['model'].get('dropout_rates', [0.3, 0.3])
+                l2_reg = train_config['model'].get('l2_regularization', 0.001)
+            else:
+                # 使用默认值
+                layers = [64, 32]
+                dropout_rates = [0.3, 0.3]
+                l2_reg = 0.001
+        
+        self.feature_pipelines = []
+        self.concat_layer = tf.keras.layers.Concatenate(axis=1)
+        
+        # 为每个管道保存对应的输入特征名
+        for pipeline in pipelines_config:
+            input_feature = None
+            processors = []
+            
+            # 从配置中获取输入特征名
+            if 'operations' in pipeline and pipeline['operations']:
+                first_op = pipeline['operations'][0]
+                if 'col_in' in first_op:
+                    input_feature = first_op['col_in']
+            
+            # 构建处理管道
+            for operation in pipeline.get('operations', []):
+                # 提取操作参数
+                func_name = operation['func_name']
+                func_parameters = operation.get('func_parameters', {})
+                
+                # 决定使用哪个处理器字典
+                if pipeline['feat_type'] == 'SingleFeature' or pipeline['feat_type'] == 'SparseFeature':
+                    processor_dict = self.single_processor_dict
+                else:
+                    processor_dict = self.cross_processor_dict
+                
+                # 添加安全检查
+                if func_name not in processor_dict:
+                    print(f"警告：找不到处理器 {func_name}，可用处理器: {list(processor_dict.keys())}")
+                    continue
+                
+                # 如果是数值操作但输入可能是字符串，需要先添加转换层
+                if func_name in ['Normalized', 'MinMaxScaler']:
+                    processors.append(tf.keras.layers.Lambda(
+                        lambda x: tf.strings.to_number(x, out_type=tf.float32),
+                        name=f"str_to_number_{operation.get('col_in', 'unknown')}"
+                    ))
+                
+                # 创建处理器实例
+                processor = processor_dict[func_name](**func_parameters)
+                processors.append(processor)
+            
+            # 只有当输入特征有效且处理器不为空时，才添加到管道中
+            if input_feature and processors:
+                self.feature_pipelines.append((input_feature, processors))
+        
+        # 创建分类器网络
+        classifier_layers = []
+        classifier_layers.append(tf.keras.layers.BatchNormalization())
+        
+        for i, units in enumerate(layers):
+            classifier_layers.append(
+                tf.keras.layers.Dense(
+                    units,
+                    activation='relu',
+                    kernel_regularizer=tf.keras.regularizers.l2(l2_reg)
+                )
+            )
+            if i < len(dropout_rates):
+                classifier_layers.append(tf.keras.layers.Dropout(dropout_rates[i]))
+        
+        # 输出层
+        classifier_layers.append(
+            tf.keras.layers.Dense(
+                1,
+                activation='sigmoid',
+                kernel_regularizer=tf.keras.regularizers.l2(l2_reg)
+            )
+        )
+        
+        self.classifier = tf.keras.Sequential(classifier_layers)
+    
+    def call(self, features, training=None):
+        """模型前向传播"""
+        # 处理特征
+        outputs = []
+        used_features = []
+        
+        # 对每个特征管道应用处理
+        for feature_name, processors in self.feature_pipelines:
+            # 检查特征是否存在
+            if feature_name in features:
+                f_in = features[feature_name]
+                used_features.append(feature_name)
+                
+                # 逐层应用处理
+                for processor in processors:
+                    f_in = processor(f_in)
+                
+                # 添加到输出列表
+                outputs.append(f_in)
+        
+        # 如果没有有效输出，报告错误
+        if not outputs:
+            raise ValueError("没有可用的特征输出，请检查输入特征和特征处理管道")
+        
+        # 合并所有输出
+        concat_outputs = self.concat_layer(outputs) if len(outputs) > 1 else outputs[0]
+        
+        # 应用分类器
+        predictions = self.classifier(concat_outputs)
+        return predictions
+    
+    def train_step(self, data):
+        """自定义训练步骤"""
+        features, labels = data
+        
+        with tf.GradientTape() as tape:
+            # 前向传播
+            predictions = self(features, training=True)
+            # 确保标签和预测形状一致
+            labels = tf.expand_dims(labels, axis=1)  # 将标签形状从(batch_size,)变为(batch_size,1)
+            # 计算每个样本的损失
+            per_example_loss = tf.keras.losses.binary_crossentropy(labels, predictions)
+            # 计算平均损失（标量值）
+            loss = tf.reduce_mean(per_example_loss)
+            # 添加正则化损失
+            regularization_loss = sum(self.losses) if self.losses else 0
+            total_loss = loss + regularization_loss
+        
+        # 计算梯度
+        gradients = tape.gradient(total_loss, self.trainable_variables)
+        # 应用梯度
+        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
+
+        # 更新指标
+        self.compiled_metrics.update_state(labels, predictions)
+        
+        # 返回包含损失和指标的字典
+        results = {'loss': total_loss}
+        for metric in self.metrics:
+            results[metric.name] = metric.result()
+        
+        return results 

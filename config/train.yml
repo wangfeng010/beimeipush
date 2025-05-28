@@ -1,0 +1,41 @@
+training:
+  # Basic training parameters
+  batch_size: 256
+  epochs: 2
+  lr: 0.0005
+  weight_decay: 0.001
+  
+  # Learning rate scheduler
+  lr_scheduler:
+    type: "ExponentialDecay"
+    decay_steps: 100
+    decay_rate: 0.96
+    staircase: true
+    min_lr: 0.00001
+  
+  # Early stopping configuration
+  early_stopping:
+    monitor: "val_auc"
+    patience: 2
+    mode: "max"
+    restore_best_weights: true
+  
+  # Learning rate reduction on plateau
+  reduce_lr:
+    monitor: "val_loss"
+    factor: 0.5
+    patience: 1
+    min_lr: 0.00001
+  
+  # Data processing
+  shuffle_buffer_size: 20000
+  prefetch: "auto"  # Uses tf.data.AUTOTUNE
+
+  # Model checkpoints
+  save_model: true
+  model_path: "./models/push_binary_classification_model.keras"
+  best_model_path: "./models/best_model.keras"
+  save_best_only: true
+  
+  # Validation
+  validation_split: 0.2  # Split by user ID

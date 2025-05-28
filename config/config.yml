@@ -414,7 +414,7 @@ train:
 hdfs:
   api_url: "http://ainvest-recsys-platform-server-0-prod.default:9595/recsys/api/bigFileUploader/"
   base_model_hdfs_dir: "dongshaojie/ainvest_push/" # HDFS模型基础目录
-  model_version: "tree_model_B" # base_model_hdfs_dird的下一级文件夹
+  model_version: "tree_model_MLP" # base_model_hdfs_dird的下一级文件夹
 
 serve:
   # 下载调度相关配置

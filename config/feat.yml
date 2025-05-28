@@ -1,0 +1,197 @@
+pipelines:
+  - feat_name: user_id_emb
+    feat_type: SparseFeature
+    operations:
+      - col_in: user_id
+        col_out: user_id
+        func_name: FillNaString
+        func_parameters:
+          fill_value: "0"
+      - col_in: user_id
+        col_out: user_id_emb
+        func_name: StrEmbedding
+        func_parameters:
+          embedding_dim: 8
+          vocab_size: 10000
+          padding_value: "0"
+          pooling: None
+
+  - feat_name: watchlists_emb
+    feat_type: SparseFeature
+    operations:
+      - col_in: watchlists
+        col_out: watchlists
+        func_name: FillNaString
+        func_parameters:
+          fill_value: "NULL"
+      - col_in: watchlists
+        col_out: watchlists
+        func_name: SplitProcessor
+        func_parameters:
+          sep: " & "
+          padding_value: "NULL"
+          max_length: 15
+      - col_in: watchlists
+        col_out: watchlists_emb
+        func_name: StrEmbedding
+        func_parameters:
+          embedding_dim: 8
+          vocab_size: 2000
+          padding_value: "NULL"
+          pooling: "mean"
+  
+  - feat_name: country_emb
+    feat_type: SparseFeature
+    operations:
+      - col_in: country
+        col_out: country
+        func_name: FillNaString
+        func_parameters:
+          fill_value: "unknown"
+      - col_in: country
+        col_out: country_emb
+        func_name: StrEmbedding
+        func_parameters:
+          embedding_dim: 8
+          vocab_size: 300
+          padding_value: "unknown"
+          pooling: None
+  
+  - feat_name: prefer_bid_emb
+    feat_type: SparseFeature
+    operations:
+      - col_in: prefer_bid
+        col_out: prefer_bid
+        func_name: FillNaString
+        func_parameters:
+          fill_value: "NULL#0"
+      - col_in: prefer_bid
+        col_out: prefer_bid_emb
+        func_name: SplitEmbedding
+        func_parameters:
+          first_sep: "|"
+          second_sep: "#"
+          second_sep_pos: 0
+          padding_value: "NULL"
+          second_sep_item_num: 2
+          max_length: 5
+          embedding_dim: 8
+          vocab_size: 500
+          pooling: "mean"
+  
+  - feat_name: user_propernoun_emb
+    feat_type: SparseFeature
+    operations:
+      - col_in: user_propernoun
+        col_out: user_propernoun
+        func_name: FillNaString
+        func_parameters:
+          fill_value: "NULL#0"
+      - col_in: user_propernoun
+        col_out: user_propernoun_emb
+        func_name: SplitEmbedding
+        func_parameters:
+          first_sep: "|"
+          second_sep: "#"
+          second_sep_pos: 0
+          padding_value: "NULL"
+          second_sep_item_num: 2
+          max_length: 10
+          embedding_dim: 16
+          vocab_size: 3000
+          pooling: "mean"
+  
+  - feat_name: push_title_emb
+    feat_type: SparseFeature
+    operations:
+      - col_in: push_title
+        col_out: push_title
+        func_name: FillNaString
+        func_parameters:
+          fill_value: ""
+      - col_in: push_title
+        col_out: push_title_emb
+        func_name: StrEmbedding
+        func_parameters:
+          embedding_dim: 16
+          vocab_size: 5000
+          padding_value: ""
+          pooling: None
+  
+  - feat_name: push_content_emb
+    feat_type: SparseFeature
+    operations:
+      - col_in: push_content
+        col_out: push_content
+        func_name: FillNaString
+        func_parameters:
+          fill_value: ""
+      - col_in: push_content
+        col_out: push_content_emb
+        func_name: StrEmbedding
+        func_parameters:
+          embedding_dim: 32
+          vocab_size: 10000
+          padding_value: ""
+          pooling: None
+  
+  - feat_name: item_code_emb
+    feat_type: SparseFeature
+    operations:
+      - col_in: item_code
+        col_out: item_code
+        func_name: FillNaString
+        func_parameters:
+          fill_value: "NULL"
+      - col_in: item_code
+        col_out: item_code_emb
+        func_name: StrEmbedding
+        func_parameters:
+          embedding_dim: 8
+          vocab_size: 1000
+          padding_value: "NULL"
+          pooling: None
+  
+  - feat_name: item_tags_emb
+    feat_type: SparseFeature
+    operations:
+      - col_in: item_tags
+        col_out: item_tags
+        func_name: FillNaString
+        func_parameters:
+          fill_value: "NULL"
+      - col_in: item_tags
+        col_out: item_tags_emb
+        func_name: StrEmbedding
+        func_parameters:
+          embedding_dim: 8
+          vocab_size: 1000
+          padding_value: "NULL"
+          pooling: None
+          
+  - feat_name: title_content_cross
+    feat_type: SparseFeature
+    operations:
+      - col_in: push_title
+        col_out: push_title_prep
+        func_name: FillNaString
+        func_parameters:
+          fill_value: ""
+      - col_in: push_content
+        col_out: push_content_prep
+        func_name: FillNaString
+        func_parameters:
+          fill_value: ""
+      - col_in_list: [push_title_prep, push_content_prep]
+        col_out: title_content_cross
+        func_name: StringConcat
+        func_parameters:
+          sep: " "
+      - col_in: title_content_cross
+        col_out: title_content_cross_emb
+        func_name: StrEmbedding
+        func_parameters:
+          embedding_dim: 16
+          vocab_size: 15000
+          padding_value: ""
+          pooling: None
