@@ -2,6 +2,7 @@ import lightgbm as lgb
 import pandas as pd
 from loguru import logger
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import roc_auc_score
 
 from src.config.base_config import AppConfig, TrainsetConfig
 from src.config.yaml_config import load_config_from_yaml
@@ -95,13 +96,33 @@ class PushClassifier:
         )
         train_data = lgb.Dataset(X_train, label=y_train)
         val_data = lgb.Dataset(X_val, label=y_val)
+        
+        # 记录训练开始时间
+        logger.info("Starting model training...")
+        
+        # 添加训练集作为验证集的一部分，同时显示训练集和验证集的性能
         model = lgb.train(
             self.model_config.model_dump(),
             train_data,
-            valid_sets=[val_data],
+            valid_sets=[train_data, val_data],
+            valid_names=['train', 'valid'],
             feature_name=list(X.columns),
         )
         model.save_model("model.pth")
+        
+        # 使用模型对训练集和验证集进行预测，计算并打印AUC
+        y_train_pred = model.predict(X_train)
+        y_val_pred = model.predict(X_val)
+        
+        train_auc = roc_auc_score(y_train, y_train_pred)
+        val_auc = roc_auc_score(y_val, y_val_pred)
+        
+        logger.info(f"Final Training AUC: {train_auc:.4f}")
+        logger.info(f"Final Validation AUC: {val_auc:.4f}")
+        
+        # 评估模型是否过拟合
+        if train_auc - val_auc > 0.05:
+            logger.warning(f"Possible overfitting detected: Train AUC - Val AUC = {train_auc - val_auc:.4f}")
 
         # 分析并输出特征重要性
         importance = model.feature_importance(importance_type='gain')
