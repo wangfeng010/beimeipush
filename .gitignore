@@ -1,4 +1,3 @@
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -146,3 +145,7 @@ poetry.lock
 
 *.zip
 *.pth
+
+# 模型和日志文件
+logs/
+models/

@@ -1,8 +1,0 @@
-{
-  "train_users_count": 9336,
-  "validation_users_count": 2335,
-  "total_users_count": 11671,
-  "total_samples": 60000,
-  "train_ratio": 0.7999314540313598,
-  "val_ratio": 0.2000685459686402
-}
