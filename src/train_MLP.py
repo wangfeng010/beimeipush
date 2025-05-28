@@ -7,6 +7,8 @@ MLP推送二分类模型训练脚本
 
 import os
 import sys
+from typing import Dict, List, Tuple, Any, Optional, Union
+
 import numpy as np
 import tensorflow as tf
 
@@ -22,35 +24,48 @@ if ENV_DIR not in sys.path:
 
 from light_ctr.utils.constants import TF_DTYPE_MAPPING # type: ignore
 
-# 直接从专门的模块导入函数，而不是通过兼容层
+# 导入所需的工具函数
 from src.utils.environment_utils import setup_environment
 from src.utils.training_utils import train_model
 from src.utils.feature_analysis_utils import check_feature_importance, plot_feature_importance
 from src.utils.config_loader import load_data_config, load_train_config
-
 from src.data.dataset_utils import inspect_datasets
 from src.data.data_preparation import prepare_datasets
 from src.utils.gpu_utils import setup_gpu
 from src.models.model_utils import create_and_compile_model, test_model_on_batch
-from src.models.mlp import MLP
+# 从深度模型包导入MLP模型
+from src.models.deep import MLP
 
 
-def set_random_seeds(seed=42):
-    """设置随机种子以确保结果可复现"""
+def set_random_seeds(seed: int = 42) -> None:
+    """
+    设置随机种子以确保结果可复现
+    
+    参数:
+        seed: 随机种子值
+    """
     tf.random.set_seed(seed)
     np.random.seed(seed)
     print(f"随机种子已设置为: {seed}")
 
 
-def setup_directories():
-    """创建必要的日志和模型目录"""
+def setup_directories() -> None:
+    """
+    创建必要的日志和模型目录
+    """
     os.makedirs("./logs", exist_ok=True)
     os.makedirs("./models", exist_ok=True)
     print("已创建日志和模型目录")
 
 
-def load_configurations():
-    """加载所有必要的配置文件"""
+def load_configurations() -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
+    """
+    加载所有必要的配置文件
+    
+    返回:
+        data_config: 数据配置
+        train_config: 训练配置
+    """
     # 加载数据配置
     data_config = load_data_config()
     print("数据配置已加载")
@@ -66,47 +81,149 @@ def load_configurations():
     return data_config, train_config
 
 
-def main():
-    """主函数，执行训练流程"""
-    # 1. 环境设置和配置
-    setup_gpu()
-    project_root = setup_environment()
-    setup_directories()
-    set_random_seeds()
+def prepare_model_and_data() -> Tuple[
+    tf.keras.Model,
+    tf.data.Dataset,
+    tf.data.Dataset,
+    tf.data.Dataset
+]:
+    """
+    准备模型和数据
     
-    # 2. 加载配置
+    返回:
+        model: 编译好的模型
+        full_dataset: 完整数据集
+        train_dataset: 训练数据集
+        validation_dataset: 验证数据集
+    """
+    # 1. 加载配置
     data_config, train_config = load_configurations()
     
-    # 3. 数据准备
-    full_dataset, train_dataset, validation_dataset, column_names, input_signature = prepare_datasets(
-        data_config, train_config, TF_DTYPE_MAPPING
-    )
+    # 2. 数据准备
+    datasets = prepare_dataset_from_config(data_config, train_config)
+    full_dataset, train_dataset, validation_dataset = datasets[:3]
     
-    # 4. 检查数据集
+    # 3. 检查数据集
     inspect_datasets(full_dataset, train_dataset, validation_dataset)
     
-    # 5. 创建并编译模型
+    # 4. 创建并编译模型
     model = create_and_compile_model(MLP, train_config)
     
-    # 6. 测试模型
+    return model, full_dataset, train_dataset, validation_dataset
+
+
+def prepare_dataset_from_config(
+    data_config: Dict[str, Any], 
+    train_config: Optional[Dict[str, Any]]
+) -> Tuple[tf.data.Dataset, tf.data.Dataset, tf.data.Dataset, List[str], Dict[str, tf.TensorShape]]:
+    """
+    从配置中准备数据集
+    
+    参数:
+        data_config: 数据配置
+        train_config: 训练配置
+        
+    返回:
+        full_dataset: 完整数据集
+        train_dataset: 训练数据集
+        validation_dataset: 验证数据集
+        column_names: 列名列表
+        input_signature: 输入签名
+    """
+    return prepare_datasets(
+        data_config, train_config, TF_DTYPE_MAPPING
+    )
+
+
+def train_and_evaluate_model(
+    model: tf.keras.Model,
+    full_dataset: tf.data.Dataset,
+    train_dataset: tf.data.Dataset,
+    validation_dataset: tf.data.Dataset,
+    train_config: Optional[Dict[str, Any]] = None
+) -> None:
+    """
+    训练和评估模型
+    
+    参数:
+        model: 待训练的模型
+        full_dataset: 完整数据集
+        train_dataset: 训练数据集
+        validation_dataset: 验证数据集
+        train_config: 训练配置
+    """
+    # 1. 测试模型
     if not test_model_on_batch(model, full_dataset):
-        print("跳过训练步骤")
+        print("模型测试失败，跳过训练步骤")
         return
     
-    # 7. 训练模型
-    history = train_model(model, full_dataset, train_dataset, validation_dataset, train_config=train_config)
+    # 2. 训练模型
+    print("\n开始训练模型...")
+    history = train_model(
+        model, full_dataset, train_dataset, validation_dataset, 
+        train_config=train_config
+    )
     
-    # 8. 输出训练结果
-    print(f"模型训练完成")
+    # 3. 输出训练结果
+    print_training_results(history)
+    
+    # 4. 评估特征重要性
+    print("\n开始评估特征重要性...")
+    feature_importance = check_feature_importance(
+        model, validation_dataset, train_config=train_config
+    )
+    
+    # 5. 绘制特征重要性图
+    plot_feature_importance(feature_importance)
+
+
+def print_training_results(history: tf.keras.callbacks.History) -> None:
+    """
+    打印训练结果
+    
+    参数:
+        history: 训练历史对象
+    """
+    print(f"\n模型训练完成")
     print(f"训练集最终AUC: {history.history['auc'][-1]:.6f}")
     print(f"验证集最终AUC: {history.history['val_auc'][-1]:.6f}")
     
-    # 9. 评估特征重要性
-    print("\n开始评估特征重要性...")
-    feature_importance = check_feature_importance(model, validation_dataset, train_config=train_config)
+    # 计算并打印过拟合指标
+    train_auc = history.history['auc'][-1]
+    val_auc = history.history['val_auc'][-1]
+    auc_diff = train_auc - val_auc
     
-    # 10. 绘制特征重要性图
-    plot_feature_importance(feature_importance)
+    if auc_diff > 0.05:
+        print(f"警告: 可能存在过拟合现象 (训练AUC - 验证AUC = {auc_diff:.4f})")
+
+
+def main() -> None:
+    """主函数，执行训练流程"""
+    # 1. 环境设置
+    setup_environment_for_training()
+    
+    # 2. 准备模型和数据
+    model, full_dataset, train_dataset, validation_dataset = prepare_model_and_data()
+    
+    # 3. 重新加载训练配置（确保使用最新配置）
+    _, train_config = load_configurations()
+    
+    # 4. 训练和评估模型
+    train_and_evaluate_model(
+        model, full_dataset, train_dataset, validation_dataset, 
+        train_config=train_config
+    )
+    
+    print("\n训练流程完成")
+
+
+def setup_environment_for_training() -> None:
+    """设置训练环境"""
+    setup_gpu()
+    setup_environment()
+    setup_directories()
+    set_random_seeds()
+    print("训练环境设置完成")
 
 
 if __name__ == "__main__":
