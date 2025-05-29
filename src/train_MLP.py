@@ -81,6 +81,41 @@ def load_configurations() -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
     return data_config, train_config
 
 
+def trace_model(model: tf.keras.Model, dataset: tf.data.Dataset) -> None:
+    """
+    通过执行一次前向传递来追踪模型的所有函数，解决未追踪函数的警告问题
+    
+    参数:
+        model: 需要追踪的模型
+        dataset: 用于执行前向传递的数据集
+    """
+    # 获取一个批次的数据
+    for batch in dataset.take(1):
+        # 提取特征和标签
+        features, labels = batch
+        
+        # 检查features是否为字典类型，这是多输入特征的常见情况
+        if isinstance(features, dict):
+            # 使用tf.function装饰器，为字典类型的输入创建输入签名
+            @tf.function
+            def trace_forward(inputs):
+                return model(inputs, training=False)
+            
+            # 执行前向传递来追踪所有函数
+            _ = trace_forward(features)
+        else:
+            # 单一输入特征的情况（不太可能出现在此模型中）
+            @tf.function(input_signature=[tf.TensorSpec(shape=features.shape, dtype=features.dtype)])
+            def trace_forward(inputs):
+                return model(inputs, training=False)
+            
+            # 执行前向传递来追踪所有函数
+            _ = trace_forward(features)
+        
+        print("模型函数追踪完成，这将减少保存模型时的未追踪函数警告")
+        break
+
+
 def prepare_model_and_data() -> Tuple[
     tf.keras.Model,
     tf.data.Dataset,
@@ -108,6 +143,9 @@ def prepare_model_and_data() -> Tuple[
     
     # 4. 创建并编译模型
     model = create_and_compile_model(MLP, train_config)
+    
+    # 5. 通过执行一次前向传递来追踪模型函数，减少保存时的警告
+    trace_model(model, full_dataset)
     
     return model, full_dataset, train_dataset, validation_dataset
 

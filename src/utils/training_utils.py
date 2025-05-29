@@ -95,6 +95,14 @@ def train_model(model, dataset, train_dataset, validation_dataset, train_config=
     training_time = end_time - start_time
     print(f"Training completed, total time: {training_time:.2f} seconds")
     
+    # 在训练完成后保存最终模型
+    try:
+        # 使用标准保存方法，避免使用实验性选项
+        model.save("./models/final_model", save_format="tf")
+        print("模型已保存到 ./models/final_model")
+    except Exception as e:
+        print(f"保存最终模型时出错: {str(e)}")
+    
     # Get final training and validation metrics
     final_train_auc = history.history['auc'][-1]
     final_val_auc = history.history['val_auc'][-1]
