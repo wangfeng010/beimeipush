@@ -7,14 +7,21 @@ Dataset utilities for push binary classification
 
 import os
 import glob
+import json
+import datetime
 import pandas as pd
 import numpy as np
 import tensorflow as tf
-from typing import Dict, List, Tuple, Set, Any
+from typing import Dict, List, Tuple, Set, Any, Optional
 
 
-def build_dataset(file_pattern: str, column_names: List[str], column_defaults: List[Any], 
-                  batch_size: int = 256) -> Tuple[tf.data.Dataset, np.ndarray, int]:
+def build_dataset(
+    file_pattern: str, 
+    column_names: List[str], 
+    column_defaults: List[Any], 
+    batch_size: int = 256, 
+    data_config: Optional[Dict] = None
+) -> Tuple[tf.data.Dataset, np.ndarray, int]:
     """
     构建数据集
     
@@ -23,21 +30,85 @@ def build_dataset(file_pattern: str, column_names: List[str], column_defaults: L
         column_names: 数据列名
         column_defaults: 每列的默认数据类型
         batch_size: 批处理大小
+        data_config: 数据配置字典，包含CSV格式设置
         
     Returns:
         dataset: TensorFlow 数据集
         unique_user_ids: 唯一用户ID数组
         total_samples: 样本总数
     """
-    # 添加调试信息
+    # 查找符合模式的文件
+    files = _find_csv_files(file_pattern)
+    
+    # 从配置中获取CSV格式设置
+    csv_sep, csv_header, use_names = _get_csv_format_settings(data_config, column_names)
+    
+    # 读取并合并CSV文件
+    combined_df = _read_and_combine_csv_files(files, csv_sep, csv_header, use_names)
+    
+    # 显示数据信息
+    _display_dataframe_info(combined_df)
+    
+    # 处理标签列
+    numeric_labels = _process_labels(combined_df)
+    
+    # 保存user_id列以便后续按用户划分训练和测试集
+    user_ids = combined_df['user_id'].values
+    
+    # 将数据转换为TensorFlow数据集
+    dataset = _convert_to_tf_dataset(combined_df, numeric_labels)
+    
+    # 返回数据集、唯一用户ID和总样本数
+    unique_user_ids = np.unique(user_ids)
+    total_samples = len(combined_df)
+    
+    return dataset, unique_user_ids, total_samples
+
+
+def _find_csv_files(file_pattern: str) -> List[str]:
+    """查找符合模式的CSV文件"""
     files = glob.glob(file_pattern)
     print(f"找到CSV文件: {len(files)}个")
-    print(f"示例文件: {files[:3]}")
+    if len(files) > 3:
+        print(f"示例文件: {files[:5]}")
+    else:
+        print(f"示例文件: {files}")
     
     if not files:
         raise ValueError(f"在 {file_pattern} 找不到任何CSV文件")
     
-    # 使用pandas读取所有CSV文件
+    return files
+
+
+def _get_csv_format_settings(
+    data_config: Optional[Dict], 
+    column_names: List[str]
+) -> Tuple[str, Optional[int], Optional[List[str]]]:
+    """从配置中获取CSV格式设置"""
+    csv_sep = ','  # 默认逗号分隔
+    csv_header = 0  # 默认有表头
+    
+    if data_config and 'csv_format' in data_config:
+        csv_format = data_config['csv_format']
+        csv_sep = csv_format.get('separator', ',')
+        csv_header = csv_format.get('header', 0)
+        print(f"使用配置的CSV格式: 分隔符='{csv_sep}', 表头={csv_header}")
+    
+    # 决定是否需要提供列名
+    use_names = None
+    if csv_header is None:  # 如果无表头，则使用提供的列名
+        use_names = column_names
+    
+    return csv_sep, csv_header, use_names
+
+
+def _read_and_combine_csv_files(
+    files: List[str], 
+    csv_sep: str, 
+    csv_header: Optional[int], 
+    use_names: Optional[List[str]]
+) -> pd.DataFrame:
+    """读取并合并CSV文件"""
     print("读取CSV文件...")
     dfs = []
     
@@ -61,7 +132,15 @@ def build_dataset(file_pattern: str, column_names: List[str], column_defaults: L
     for file in files:
         print(f"读取文件: {file}")
         try:
-            df = pd.read_csv(file, escapechar='\\', quotechar='"', dtype=dtypes)
+            df = pd.read_csv(
+                file, 
+                sep=csv_sep, 
+                header=csv_header, 
+                names=use_names,
+                escapechar='\\', 
+                quotechar='"', 
+                dtype=dtypes
+            )
             print(f"  行数: {len(df)}")
             dfs.append(df)
         except Exception as e:
@@ -74,16 +153,23 @@ def build_dataset(file_pattern: str, column_names: List[str], column_defaults: L
     combined_df = pd.concat(dfs)
     print(f"合并后总行数: {len(combined_df)}")
     
-    # 显示数据类型
+    return combined_df
+
+
+def _display_dataframe_info(df: pd.DataFrame) -> None:
+    """显示数据框的基本信息"""
     print("数据列和类型:")
-    print(combined_df.dtypes)
+    print(df.dtypes)
     
     # 检查标签列的值分布
     print("标签值分布:")
-    print(combined_df['log_type'].value_counts())
-    
+    print(df['log_type'].value_counts())
+
+
+def _process_labels(df: pd.DataFrame) -> pd.Series:
+    """处理标签列"""
     # 提取标签列
-    labels = combined_df.pop('log_type')
+    labels = df.pop('log_type')
     
     # 将标签转换为0/1 (PR:0, PC:1)
     label_dict = {'PR': 0, 'PC': 1}
@@ -91,33 +177,31 @@ def build_dataset(file_pattern: str, column_names: List[str], column_defaults: L
     print("标签数值分布:")
     print(numeric_labels.value_counts())
     
-    # 保存user_id列以便后续按用户划分训练和测试集
-    user_ids = combined_df['user_id'].values
-    
-    # 转换为TensorFlow数据集
+    return numeric_labels
+
+
+def _convert_to_tf_dataset(df: pd.DataFrame, labels: pd.Series) -> tf.data.Dataset:
+    """将DataFrame和标签转换为TensorFlow数据集"""
     features_dict = {}
     
     # 处理特征，保持原始数据类型，处理空值
-    for col in combined_df.columns:
+    for col in df.columns:
         # 将NaN值替换为空字符串
-        combined_df[col] = combined_df[col].fillna('')
-        features_dict[col] = tf.constant(combined_df[col].values, dtype=tf.string)
+        df[col] = df[col].fillna('')
+        features_dict[col] = tf.constant(df[col].values, dtype=tf.string)
     
     # 创建数据集，包含特征和标签
-    labels_tensor = tf.constant(numeric_labels.values, dtype=tf.int32)
+    labels_tensor = tf.constant(labels.values, dtype=tf.int32)
     
     # 创建包含所有特征的数据集
-    dataset = tf.data.Dataset.from_tensor_slices((features_dict, labels_tensor))
-    
-    # 返回数据集、唯一用户ID和总样本数
-    unique_user_ids = np.unique(user_ids)
-    total_samples = len(combined_df)
-    
-    return dataset, unique_user_ids, total_samples
+    return tf.data.Dataset.from_tensor_slices((features_dict, labels_tensor))
 
 
-def split_dataset(dataset: tf.data.Dataset, unique_user_ids: np.ndarray, 
-                 val_ratio: float = 0.2) -> Tuple[tf.data.Dataset, tf.data.Dataset, List[str], List[str]]:
+def split_dataset(
+    dataset: tf.data.Dataset, 
+    unique_user_ids: np.ndarray, 
+    val_ratio: float = 0.2
+) -> Tuple[tf.data.Dataset, tf.data.Dataset, List[str], List[str]]:
     """
     按用户划分数据集为训练集和验证集
     
@@ -135,20 +219,45 @@ def split_dataset(dataset: tf.data.Dataset, unique_user_ids: np.ndarray,
     print(f"按用户拆分数据集，验证集比例: {val_ratio}")
     print(f"唯一用户数: {len(unique_user_ids)}")
     
-    # 随机打乱用户ID
-    np.random.shuffle(unique_user_ids)
-    
-    # 按比例划分用户为训练集和验证集
-    split_idx = int(len(unique_user_ids) * (1 - val_ratio))
-    train_users = unique_user_ids[:split_idx]
-    val_users = unique_user_ids[split_idx:]
-    
-    print(f"训练集用户数: {len(train_users)}")
-    print(f"验证集用户数: {len(val_users)}")
+    # 获取训练和验证用户列表
+    train_users, val_users = _split_users(unique_user_ids, val_ratio)
     
     # 将用户ID转换为集合以便快速查找
     val_users_set = set(val_users)
     
+    # 根据用户ID划分数据集
+    train_dataset, validation_dataset = _filter_datasets_by_users(dataset, val_users_set)
+    
+    # 验证数据集大小
+    _validate_split_sizes(train_dataset, validation_dataset)
+    
+    # 保存用户划分信息到日志
+    _save_user_split_info(train_users, val_users)
+    
+    return train_dataset, validation_dataset, val_users.tolist(), train_users.tolist()
+
+
+def _split_users(user_ids: np.ndarray, val_ratio: float) -> Tuple[np.ndarray, np.ndarray]:
+    """将用户ID拆分为训练和验证集"""
+    # 随机打乱用户ID
+    np.random.shuffle(user_ids)
+    
+    # 按比例划分用户为训练集和验证集
+    split_idx = int(len(user_ids) * (1 - val_ratio))
+    train_users = user_ids[:split_idx]
+    val_users = user_ids[split_idx:]
+    
+    print(f"训练集用户数: {len(train_users)}")
+    print(f"验证集用户数: {len(val_users)}")
+    
+    return train_users, val_users
+
+
+def _filter_datasets_by_users(
+    dataset: tf.data.Dataset, 
+    val_users_set: Set[str]
+) -> Tuple[tf.data.Dataset, tf.data.Dataset]:
+    """根据用户ID过滤数据集"""
     # 函数：确定某条记录属于训练集还是验证集
     def is_validation_user(features, label):
         return tf.py_function(
@@ -163,7 +272,14 @@ def split_dataset(dataset: tf.data.Dataset, unique_user_ids: np.ndarray,
         lambda features, label: tf.logical_not(is_validation_user(features, label))
     )
     
-    # 验证数据集大小
+    return train_dataset, validation_dataset
+
+
+def _validate_split_sizes(
+    train_dataset: tf.data.Dataset, 
+    validation_dataset: tf.data.Dataset
+) -> None:
+    """验证拆分后的数据集大小"""
     try:
         # 获取大致的批次数量
         train_count = sum(1 for _ in train_dataset.take(100))
@@ -173,8 +289,30 @@ def split_dataset(dataset: tf.data.Dataset, unique_user_ids: np.ndarray,
         print(f"验证集样本数(估计): 至少 {val_count} 条")
     except Exception as e:
         print(f"计算数据集大小时出错: {e}")
-    
-    return train_dataset, validation_dataset, val_users.tolist(), train_users.tolist()
+
+
+def _save_user_split_info(train_users: np.ndarray, val_users: np.ndarray) -> None:
+    """保存用户划分信息到日志文件"""
+    try:
+        # 确保日志目录存在
+        os.makedirs("./logs", exist_ok=True)
+        
+        # 保存用户划分信息
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        split_info = {
+            "train_users_count": len(train_users),
+            "val_users_count": len(val_users),
+            "timestamp": timestamp
+        }
+        
+        # 写入JSON文件
+        split_file = f"./logs/user_split_{timestamp}.json"
+        with open(split_file, 'w') as f:
+            json.dump(split_info, f, indent=2)
+        
+        print(f"用户划分信息已保存到: {split_file}")
+    except Exception as e:
+        print(f"保存用户划分信息时出错: {e}")
 
 
 def validate_dataset(dataset: tf.data.Dataset) -> Dict[str, tf.TensorSpec]:
@@ -210,8 +348,11 @@ def validate_dataset(dataset: tf.data.Dataset) -> Dict[str, tf.TensorSpec]:
     raise ValueError("数据集为空，无法验证")
 
 
-def inspect_datasets(dataset: tf.data.Dataset, train_dataset: tf.data.Dataset, 
-                    validation_dataset: tf.data.Dataset) -> None:
+def inspect_datasets(
+    dataset: tf.data.Dataset, 
+    train_dataset: tf.data.Dataset, 
+    validation_dataset: tf.data.Dataset
+) -> None:
     """
     检查数据集的样本和分布情况
     
@@ -223,30 +364,75 @@ def inspect_datasets(dataset: tf.data.Dataset, train_dataset: tf.data.Dataset,
     print("\n=== 数据集样本检查 ===")
     
     # 检查一个批次的特征和标签
-    for features, labels in dataset.take(1):
-        print("样本特征:")
-        for name, values in features.items():
-            print(f"  {name}: 形状={values.shape}, 类型={values.dtype}")
-            # 显示第一个样本的值
-            if values.shape[0] > 0:
-                try:
-                    if values.dtype == tf.string:
-                        print(f"    样本值: {values[0].numpy().decode('utf-8')}")
-                    else:
-                        print(f"    样本值: {values[0].numpy()}")
-                except:
-                    pass
-        
-        print(f"标签形状: {labels.shape}")
-        if labels.shape[0] > 0:
-            print(f"  样本标签: {labels[0].numpy()}")
+    _inspect_batch_features_and_labels(dataset)
     
     # 检查训练集和验证集的批次大小
+    _inspect_batch_sizes(train_dataset, validation_dataset)
+    
+    print("\n数据集验证完成")
+
+
+def _inspect_batch_features_and_labels(dataset: tf.data.Dataset) -> None:
+    """检查数据批次的特征和标签"""
+    for features, labels in dataset.take(1):
+        # 检查特征
+        _inspect_features(features)
+        
+        # 检查标签
+        _inspect_labels(labels)
+        
+        # 只处理第一个批次
+        break
+
+
+def _inspect_features(features: Dict[str, tf.Tensor]) -> None:
+    """检查并打印特征信息"""
+    print("样本特征:")
+    for name, values in features.items():
+        print(f"  {name}: 形状={values.shape}, 类型={values.dtype}")
+        
+        # 尝试显示第一个样本的值
+        if values.shape[0] > 0:
+            _print_sample_value(name, values)
+
+
+def _print_sample_value(name: str, values: tf.Tensor) -> None:
+    """打印特征的样本值"""
+    try:
+        if values.dtype == tf.string:
+            sample_value = values[0].numpy().decode('utf-8')
+            # 如果样本值过长，截断显示
+            if len(sample_value) > 100:
+                sample_value = sample_value[:100] + "..."
+            print(f"    样本值: {sample_value}")
+        else:
+            print(f"    样本值: {values[0].numpy()}")
+    except Exception:
+        pass  # 忽略无法显示的值
+
+
+def _inspect_labels(labels: tf.Tensor) -> None:
+    """检查并打印标签信息"""
+    print(f"标签形状: {labels.shape}")
+    if labels.shape[0] > 0:
+        print(f"  样本标签: {labels[0].numpy()}")
+
+
+def _inspect_batch_sizes(
+    train_dataset: tf.data.Dataset, 
+    validation_dataset: tf.data.Dataset
+) -> None:
+    """检查训练集和验证集的批次大小"""
     print("\n训练集和验证集批次大小:")
+    
+    # 检查训练集批次大小
     for features, _ in train_dataset.take(1):
-        print(f"训练数据集批次大小: {next(iter(features.values())).shape[0]}")
+        batch_size = next(iter(features.values())).shape[0]
+        print(f"训练数据集批次大小: {batch_size}")
+        break
     
+    # 检查验证集批次大小
     for features, _ in validation_dataset.take(1):
-        print(f"验证数据集批次大小: {next(iter(features.values())).shape[0]}")
-    
-    print("\n数据集验证完成") 
+        batch_size = next(iter(features.values())).shape[0]
+        print(f"验证数据集批次大小: {batch_size}")
+        break 

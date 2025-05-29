@@ -110,8 +110,33 @@ class FeaturePipelineBuilder:
                 name=f"str_to_number_{operation.get('col_in', 'unknown')}"
             )
         
+        # 特殊处理SplitEmbedding，将旧格式参数转换为config格式
+        if func_name == 'SplitEmbedding':
+            return self._create_split_embedding_processor(func_parameters)
+        
         # 创建处理器实例
         return processor_dict[func_name](**func_parameters)
+    
+    def _create_split_embedding_processor(self, parameters: Dict[str, Any]) -> tf.keras.layers.Layer:
+        """
+        创建SplitEmbedding处理器，将旧格式参数转换为config格式
+        
+        参数:
+            parameters: 操作参数
+            
+        返回:
+            processor: SplitEmbedding处理器实例
+        """
+        # 获取处理器类
+        SplitEmbedding = self.single_processor_dict['SplitEmbedding']
+        
+        # 将参数转换为config字典格式
+        config = {}
+        for key, value in parameters.items():
+            config[key] = value
+        
+        # 创建并返回处理器
+        return SplitEmbedding(config=config)
     
     def _select_processor_dict(self, pipeline: Dict[str, Any]) -> Dict[str, Any]:
         """

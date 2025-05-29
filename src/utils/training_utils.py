@@ -41,18 +41,20 @@ def train_model(model, dataset, train_dataset, validation_dataset, train_config=
     
     # Define callbacks
     callbacks = [
-        # Model checkpoint
+        # Model checkpoint - using SavedModel format instead of HDF5
         tf.keras.callbacks.ModelCheckpoint(
-            filepath="./models/push_binary_classification_model.keras",
+            filepath="./models/push_binary_classification_model",
             save_best_only=False,
-            save_weights_only=False),
-        # Save best model
+            save_weights_only=False,
+            save_format="tf"),  # 使用SavedModel格式
+        # Save best model - using SavedModel format
         tf.keras.callbacks.ModelCheckpoint(
-            filepath="./models/best_model.keras",
+            filepath="./models/best_model",
             save_best_only=True,
             monitor='val_auc',
             mode='max',
-            save_weights_only=False),
+            save_weights_only=False,
+            save_format="tf"),  # 使用SavedModel格式
         # Early stopping
         tf.keras.callbacks.EarlyStopping(
             monitor='val_auc',
@@ -92,6 +94,14 @@ def train_model(model, dataset, train_dataset, validation_dataset, train_config=
     end_time = time.time()
     training_time = end_time - start_time
     print(f"Training completed, total time: {training_time:.2f} seconds")
+    
+    # 在训练完成后保存最终模型
+    try:
+        # 使用标准保存方法，避免使用实验性选项
+        model.save("./models/final_model", save_format="tf")
+        print("模型已保存到 ./models/final_model")
+    except Exception as e:
+        print(f"保存最终模型时出错: {str(e)}")
     
     # Get final training and validation metrics
     final_train_auc = history.history['auc'][-1]

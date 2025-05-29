@@ -31,34 +31,33 @@ class MLP(tf.keras.Model):
         # 创建分类器网络
         self.classifier = self._build_classifier(layers, dropout_rates, l2_reg)
     
-    def _get_model_params(self, train_config):
+    def _get_model_params(self, train_config: Optional[Dict[str, Any]]) -> Tuple[List[int], List[float], float]:
         """
         从训练配置中获取模型参数
         
-        参数:
-            train_config: 训练配置字典
+        Args:
+            train_config: 训练配置字典，如果为None则使用默认参数
             
-        返回:
-            layers: 隐藏层大小列表
-            dropout_rates: Dropout比例列表
-            l2_reg: L2正则化系数
+        Returns:
+            tuple: (layers, dropout_rates, l2_reg)
+                layers: 隐藏层大小列表
+                dropout_rates: Dropout比例列表
+                l2_reg: L2正则化系数
         """
-        if train_config is None:
-            # 默认值 - 更简单的网络结构
-            layers = [64, 32]
-            dropout_rates = [0.3, 0.3]
-            l2_reg = 0.001
-        else:
-            # 如果train_config中有模型配置，则使用它
-            if 'model' in train_config:
-                layers = train_config['model'].get('layers', [64, 32])
-                dropout_rates = train_config['model'].get('dropout_rates', [0.3, 0.3])
-                l2_reg = train_config['model'].get('l2_regularization', 0.001)
-            else:
-                # 使用默认值
-                layers = [64, 32]
-                dropout_rates = [0.3, 0.3]
-                l2_reg = 0.001
+        # 默认模型参数
+        default_layers = [64, 32]
+        default_dropout_rates = [0.3, 0.3]
+        default_l2_reg = 0.001
+        
+        # 如果没有配置或配置中没有模型部分，使用默认值
+        if not train_config or 'model' not in train_config:
+            return default_layers, default_dropout_rates, default_l2_reg
+            
+        # 从配置中读取参数，如果没有则使用默认值
+        model_config = train_config['model']
+        layers = model_config.get('layers', default_layers)
+        dropout_rates = model_config.get('dropout_rates', default_dropout_rates)
+        l2_reg = model_config.get('l2_regularization', default_l2_reg)
         
         return layers, dropout_rates, l2_reg
     

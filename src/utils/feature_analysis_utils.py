@@ -24,36 +24,36 @@ def check_feature_importance(
     """
     使用排列重要性方法检查特征重要性
     
-    参数:
-    - model: 训练好的模型
-    - dataset: 测试数据集
-    - train_config: 训练配置
+    Args:
+        model: 训练好的模型
+        dataset: 测试数据集
+        train_config: 训练配置
     
-    返回:
-    - feature_importance: 特征重要性字典
+    Returns:
+        特征重要性字典，其中键为特征名，值为重要性分数(基线AUC - 随机化后的AUC)
     """
-    # 1. 设置参数
+    # 设置参数
     num_batches = train_config.get('eval_batches', 5) if train_config else 5
     num_repeats = train_config.get('importance_repeats', 3) if train_config else 3
     
-    # 2. 使用采样数据进行评估
+    # 使用采样数据进行评估
     print(f"使用 {num_batches} 批次数据评估特征重要性...")
     sample_dataset = dataset.take(num_batches)
     
-    # 3. 获取基线性能
+    # 获取基线性能
     baseline_auc, all_labels, all_preds = _calculate_baseline_performance(model, sample_dataset, num_batches)
     print(f"基线 AUC: {baseline_auc:.4f}")
     
-    # 4. 获取所有特征名称
+    # 获取所有特征名称
     feature_names = _get_feature_names(sample_dataset)
     
-    # 5. 评估每个特征的重要性
+    # 评估每个特征的重要性
     feature_importance = _evaluate_all_features(
         model, sample_dataset, feature_names, 
         baseline_auc, num_batches, num_repeats
     )
     
-    # 6. 处理和保存结果
+    # 处理和保存结果
     sorted_importance = _process_and_save_results(feature_importance)
     
     return sorted_importance
@@ -67,15 +67,15 @@ def _calculate_baseline_performance(
     """
     计算模型在原始数据集上的基线性能
     
-    参数:
-    - model: 训练好的模型
-    - dataset: 评估数据集
-    - num_batches: 要处理的批次数
+    Args:
+        model: 训练好的模型
+        dataset: 评估数据集
+        num_batches: 要处理的批次数
     
-    返回:
-    - baseline_auc: 基线AUC分数
-    - all_labels: 所有真实标签
-    - all_preds: 所有预测值
+    Returns:
+        baseline_auc: 基线AUC分数
+        all_labels: 所有真实标签
+        all_preds: 所有预测值
     """
     all_labels = []
     all_preds = []
@@ -105,11 +105,11 @@ def _get_feature_names(dataset: tf.data.Dataset) -> List[str]:
     """
     从数据集中获取特征名称
     
-    参数:
-    - dataset: 数据集
+    Args:
+        dataset: 数据集
     
-    返回:
-    - feature_names: 特征名称列表
+    Returns:
+        特征名称列表
     """
     first_batch = next(iter(dataset))
     return list(first_batch[0].keys())
@@ -126,16 +126,16 @@ def _evaluate_all_features(
     """
     评估所有特征的重要性
     
-    参数:
-    - model: 训练好的模型
-    - dataset: 评估数据集
-    - feature_names: 特征名称列表
-    - baseline_auc: 基线AUC分数
-    - num_batches: 要处理的批次数
-    - num_repeats: 每个特征的重复评估次数
+    Args:
+        model: 训练好的模型
+        dataset: 评估数据集
+        feature_names: 特征名称列表
+        baseline_auc: 基线AUC分数
+        num_batches: 要处理的批次数
+        num_repeats: 每个特征的重复评估次数
     
-    返回:
-    - feature_importance: 特征重要性字典
+    Returns:
+        特征重要性字典
     """
     feature_importance = {}
     
@@ -157,17 +157,17 @@ def _evaluate_single_feature(
     num_repeats: int
 ) -> float:
     """
-    评估单个特征的重要性
+    评估单个特征的重要性，通过比较基线AUC和特征随机化后的AUC计算
     
-    参数:
-    - model: 训练好的模型
-    - dataset: 评估数据集
-    - feature_name: 要评估的特征名称
-    - baseline_auc: 基线AUC分数
-    - num_repeats: 重复评估次数
+    Args:
+        model: 训练好的模型
+        dataset: 评估数据集
+        feature_name: 要评估的特征名称
+        baseline_auc: 基线AUC分数
+        num_repeats: 重复评估次数
     
-    返回:
-    - importance: 特征重要性分数
+    Returns:
+        特征重要性分数，计算方式为基线AUC减去随机化后的AUC
     """
     print(f"评估特征 '{feature_name}' 的重要性...")
     feature_aucs = []
@@ -181,7 +181,6 @@ def _evaluate_single_feature(
     # 计算平均AUC
     if feature_aucs:
         avg_permuted_auc = np.mean(feature_aucs)
-        # 特征重要性 = 基线AUC - 随机化后的AUC
         importance = baseline_auc - avg_permuted_auc
         return importance
     else:
@@ -197,13 +196,13 @@ def _single_feature_permutation_test(
     """
     对单个特征进行排列测试
     
-    参数:
-    - model: 训练好的模型
-    - dataset: 评估数据集
-    - feature_name: 要评估的特征名称
+    Args:
+        model: 训练好的模型
+        dataset: 评估数据集
+        feature_name: 要评估的特征名称
     
-    返回:
-    - permuted_auc: 特征随机化后的AUC分数
+    Returns:
+        特征随机化后的AUC分数，如果测试失败则返回None
     """
     all_preds_permuted = []
     all_labels_permuted = []
@@ -238,11 +237,11 @@ def _process_and_save_results(feature_importance: Dict[str, float]) -> Dict[str,
     """
     处理和保存特征重要性结果
     
-    参数:
-    - feature_importance: 特征重要性字典
+    Args:
+        feature_importance: 特征重要性字典
     
-    返回:
-    - sorted_importance: 按重要性排序的特征字典
+    Returns:
+        按重要性排序的特征字典
     """
     # 按重要性排序
     sorted_importance = {
@@ -282,10 +281,10 @@ def plot_feature_importance(
     """
     绘制特征重要性图表
     
-    参数:
-    - feature_importance: 特征重要性字典
-    - figsize: 图表尺寸，默认为(10, 6)
-    - save_path: 保存路径，如果为None则自动生成
+    Args:
+        feature_importance: 特征重要性字典，键为特征名，值为重要性分数
+        figsize: 图表尺寸，默认为(10, 6)
+        save_path: 保存路径，如果为None则自动生成
     """
     # 确保日志目录存在
     os.makedirs("./logs", exist_ok=True)

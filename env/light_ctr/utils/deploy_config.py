@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 import yaml
 
@@ -8,12 +8,11 @@ import yaml
 class ColumnQualifier:
     """
     表示列限定符的类。
-
-    属性:
-    - qualifier: str，限定符字符串。
-    - field: str，字段名称字符串。
+    
+    Attributes:
+        qualifier: 限定符字符串
+        field: 字段名称字符串
     """
-
     qualifier: str
     field: str
 
@@ -22,65 +21,58 @@ class ColumnQualifier:
 class OfflineFeature:
     """
     表示离线特征的数据类。
-
-    属性:
-    - source: 特征的来源，可选，默认为None。
-    - column_family: 列族名称，可选，默认为None。
-    - column_qualifiers: 列限定符列表，可选，默认为一个空列表。
+    
+    Attributes:
+        source: 特征数据来源
+        column_family: HBase列族名称
+        column_qualifiers: 列限定符列表
     """
-
     source: Optional[str] = None
     column_family: Optional[str] = None
     column_qualifiers: List[ColumnQualifier] = field(default_factory=list)
 
 
 @dataclass
-class Sourceside:
+class DataSource:
     """
-    定义了一个数据类，表示数据源及其离线特征。
-
-    属性:
-    - sourceside (str): 数据源的名称或标识。
-    - offlineFeature (OfflineFeature): 离线特征对象，包含与数据源相关的离线特征信息。
+    定义数据源及其离线特征。
+    
+    Attributes:
+        name: 数据源的名称或标识
+        offline_feature: 离线特征对象，包含与数据源相关的离线特征信息
     """
-
-    sourceside: str
-    offlineFeature: OfflineFeature
-
-
-@dataclass
-class RequestContext:
-    """
-    请求上下文类，用于存储列限定符。
-
-    属性:
-    - qualifiers: 列限定符列表，默认为空列表。
-      该列表用于存储与请求相关的列限定符信息。
-    """
-
-    qualifiers: List[ColumnQualifier] = field(default_factory=list)
+    name: str  # 原来是sourceside，避免与类名重复
+    offline_feature: OfflineFeature  # 改为下划线命名风格
 
 
-# 特殊的item_context，表示当前数据的具体类型：发现场景。
 @dataclass
 class ItemStreamingPage:
+    """特殊的item_context，表示当前数据类型：发现场景。"""
     qualifiers: List[ColumnQualifier] = field(default_factory=list)
 
 
-# 特殊的item_context，表示当前数据的具体类型：feed场景。
 @dataclass
 class ItemStreamingFeed:
+    """特殊的item_context，表示当前数据类型：feed场景。"""
     qualifiers: List[ColumnQualifier] = field(default_factory=list)
 
 
-# 特殊的item_context，表示当前数据的具体类型：论股堂场景。
 @dataclass
 class ItemStreamingLungutang:
+    """特殊的item_context，表示当前数据类型：论股堂场景。"""
     qualifiers: List[ColumnQualifier] = field(default_factory=list)
 
 
 @dataclass
 class ItemContext:
+    """
+    项目上下文类，包含不同场景的上下文信息。
+    
+    Attributes:
+        item_streaming_page: 发现页面流数据上下文
+        item_streaming_feed: Feed流数据上下文
+        item_streaming_lungutang: 论股堂流数据上下文
+    """
     item_streaming_page: Optional[ItemStreamingPage] = None
     item_streaming_feed: Optional[ItemStreamingFeed] = None
     item_streaming_lungutang: Optional[ItemStreamingLungutang] = None
@@ -90,12 +82,11 @@ class ItemContext:
 class Context:
     """
     上下文类，包含请求上下文和项目上下文。
-
-    属性:
-    - request_context (List[ColumnQualifier]): 请求上下文列表，默认为空列表。
-    - item_context (ItemContext): 项目上下文，默认为一个新的ItemContext实例。
+    
+    Attributes:
+        request_context: 请求上下文中的列限定符列表
+        item_context: 项目上下文对象
     """
-
     request_context: List[ColumnQualifier] = field(default_factory=list)
     item_context: ItemContext = field(default_factory=ItemContext)
 
@@ -104,94 +95,136 @@ class Context:
 class RawData:
     """
     原始数据类，包含数据源和上下文信息。
-
-    属性:
-    - sourcesides (List[Sourceside]): 数据源列表，默认为空列表。
-    - context (Context): 上下文信息，默认为一个新的Context实例。
+    
+    Attributes:
+        data_sources: 数据源列表
+        context: 上下文信息
     """
-
-    sourcesides: List[Sourceside] = field(default_factory=list)
+    data_sources: List[DataSource] = field(default_factory=list)  # 原来是sourcesides
     context: Context = field(default_factory=Context)
+
+
+def _parse_column_qualifiers(qualifiers_data: List[Dict[str, str]]) -> List[ColumnQualifier]:
+    """
+    解析列限定符数据并转换为ColumnQualifier对象列表。
+    
+    Args:
+        qualifiers_data: 包含qualifier和field键值对的字典列表
+        
+    Returns:
+        ColumnQualifier对象列表
+    """
+    return [
+        ColumnQualifier(qualifier=q["qualifier"], field=q["field"])
+        for q in qualifiers_data or []
+    ]
+
+
+def _parse_item_context(context_data: Dict[str, Any]) -> ItemContext:
+    """
+    解析项目上下文数据并转换为ItemContext对象。
+    
+    Args:
+        context_data: 包含项目上下文数据的字典
+        
+    Returns:
+        ItemContext对象
+    """
+    item_context_data = context_data.get("item_context", {})
+    
+    return ItemContext(
+        item_streaming_page=ItemStreamingPage(
+            qualifiers=_parse_column_qualifiers(
+                item_context_data.get("item_streaming_page", [])
+            )
+        ),
+        item_streaming_feed=ItemStreamingFeed(
+            qualifiers=_parse_column_qualifiers(
+                item_context_data.get("item_streaming_feed", [])
+            )
+        ),
+        item_streaming_lungutang=ItemStreamingLungutang(
+            qualifiers=_parse_column_qualifiers(
+                item_context_data.get("item_streaming_lungutang", [])
+            )
+        ),
+    )
+
+
+def _parse_data_sources(sources_data: List[Dict[str, Any]]) -> List[DataSource]:
+    """
+    解析数据源数据并转换为DataSource对象列表。
+    
+    Args:
+        sources_data: 包含数据源信息的字典列表
+        
+    Returns:
+        DataSource对象列表
+    """
+    data_sources = []
+    
+    for source in sources_data or []:
+        offline_feature_data = source.get("offlineFeature", {})
+        
+        data_sources.append(
+            DataSource(
+                name=source["sourceside"],  # 这里保持原字段名，以保证YAML解析兼容
+                offline_feature=OfflineFeature(
+                    source=offline_feature_data.get("source"),
+                    column_family=offline_feature_data.get("column_family"),
+                    column_qualifiers=_parse_column_qualifiers(
+                        offline_feature_data.get("column_qualifiers", [])
+                    ),
+                ),
+            )
+        )
+    
+    return data_sources
 
 
 def parse_yaml_to_dataclass(yaml_file: str) -> RawData:
     """
     解析YAML文件并将其内容转换为RawData数据类实例。
-
-    :param yaml_file: 要解析的YAML文件的路径。
-    :return: 包含YAML文件内容的RawData实例。
+    
+    Args:
+        yaml_file: 要解析的YAML文件的路径
+        
+    Returns:
+        包含YAML文件内容的RawData实例
     """
     with open(yaml_file, "r") as file:
-        # 使用PyYAML库安全地加载YAML文件内容。
         data = yaml.safe_load(file)
-
+    
+    raw_data_dict = data.get("raw_data", {})
+    
+    # 创建RawData实例，使用辅助函数处理嵌套结构
     raw_data = RawData(
-        sourcesides=[
-            Sourceside(
-                sourceside=s["sourceside"],
-                offlineFeature=OfflineFeature(
-                    source=s.get("offlineFeature", {}).get("source"),
-                    column_family=s.get("offlineFeature", {}).get("column_family"),
-                    # 解析并生成列限定符列表，用于离线特征。
-                    column_qualifiers=[
-                        ColumnQualifier(qualifier=q["qualifier"], field=q["field"])
-                        for q in s.get("offlineFeature", {}).get(
-                            "column_qualifiers", []
-                        )
-                    ],
-                ),
-            )
-            for s in data.get("raw_data", {}).get("sourcesides", [])
-        ],
+        data_sources=_parse_data_sources(raw_data_dict.get("sourcesides", [])),
         context=Context(
-            # 解析并生成请求上下文中的列限定符列表。
-            request_context=[
-                ColumnQualifier(qualifier=q["qualifier"], field=q["field"])
-                for q in data.get("raw_data", {})
-                .get("context", {})
-                .get("request_context", [])
-            ],
-            item_context=ItemContext(
-                item_streaming_page=ItemStreamingPage(
-                    # 解析并生成item_streaming_page中的列限定符列表。
-                    qualifiers=[
-                        ColumnQualifier(qualifier=q["qualifier"], field=q["field"])
-                        for q in data.get("raw_data", {})
-                        .get("context", {})
-                        .get("item_context", {})
-                        .get("item_streaming_page", [])
-                    ]
-                ),
-                item_streaming_feed=ItemStreamingFeed(
-                    # 解析并生成item_streaming_feed中的列限定符列表。
-                    qualifiers=[
-                        ColumnQualifier(qualifier=q["qualifier"], field=q["field"])
-                        for q in data.get("raw_data", {})
-                        .get("context", {})
-                        .get("item_context", {})
-                        .get("item_streaming_feed", [])
-                    ]
-                ),
-                item_streaming_lungutang=ItemStreamingLungutang(
-                    # 解析并生成item_streaming_lungutang中的列限定符列表。
-                    qualifiers=[
-                        ColumnQualifier(qualifier=q["qualifier"], field=q["field"])
-                        for q in data.get("raw_data", {})
-                        .get("context", {})
-                        .get("item_context", {})
-                        .get("item_streaming_lungutang", [])
-                    ]
-                ),
+            request_context=_parse_column_qualifiers(
+                raw_data_dict.get("context", {}).get("request_context", [])
             ),
+            item_context=_parse_item_context(raw_data_dict.get("context", {})),
         ),
     )
+    
     return raw_data
 
 
 if __name__ == "__main__":
     # 使用示例
+    import os
     from pprint import pprint
-
-    yaml_file = "/home/jovyan/lightctr/config/deploy.yml"
-    raw_data = parse_yaml_to_dataclass(yaml_file)
-    pprint(raw_data)
+    
+    # 使用相对路径，更加灵活
+    yaml_file_path = os.environ.get(
+        "DEPLOY_CONFIG_PATH", 
+        "/home/jovyan/lightctr/config/deploy.yml"
+    )
+    
+    try:
+        raw_data = parse_yaml_to_dataclass(yaml_file_path)
+        print(f"成功加载配置文件: {yaml_file_path}")
+        pprint(raw_data)
+    except Exception as e:
+        print(f"加载配置文件失败: {e}")

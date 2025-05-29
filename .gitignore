@@ -149,3 +149,5 @@ poetry.lock
 # 模型和日志文件
 logs/
 *.keras
+
+py38env/
