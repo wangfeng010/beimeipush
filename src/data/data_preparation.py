@@ -46,7 +46,7 @@ def prepare_datasets(data_config: Dict[str, Any],
     
     # 4. 构建原始数据集
     dataset_with_userid, unique_user_ids, total_samples = build_dataset(
-        _get_file_pattern(data_config), column_names, column_defaults
+        _get_file_pattern(data_config), column_names, column_defaults, data_config=data_config
     )
     
     # 5. 划分训练集和验证集

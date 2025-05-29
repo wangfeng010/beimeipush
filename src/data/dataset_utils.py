@@ -14,7 +14,7 @@ from typing import Dict, List, Tuple, Set, Any
 
 
 def build_dataset(file_pattern: str, column_names: List[str], column_defaults: List[Any], 
-                  batch_size: int = 256) -> Tuple[tf.data.Dataset, np.ndarray, int]:
+                  batch_size: int = 256, data_config: Dict = None) -> Tuple[tf.data.Dataset, np.ndarray, int]:
     """
     构建数据集
     
@@ -23,6 +23,7 @@ def build_dataset(file_pattern: str, column_names: List[str], column_defaults: L
         column_names: 数据列名
         column_defaults: 每列的默认数据类型
         batch_size: 批处理大小
+        data_config: 数据配置字典，包含CSV格式设置
         
     Returns:
         dataset: TensorFlow 数据集
@@ -58,10 +59,26 @@ def build_dataset(file_pattern: str, column_names: List[str], column_defaults: L
         'submit_type': str
     }
     
+    # 从配置中获取CSV格式设置
+    csv_sep = ','  # 默认逗号分隔
+    csv_header = 0  # 默认有表头
+    
+    if data_config and 'csv_format' in data_config:
+        csv_format = data_config['csv_format']
+        csv_sep = csv_format.get('separator', ',')
+        csv_header = csv_format.get('header', 0)
+        print(f"使用配置的CSV格式: 分隔符='{csv_sep}', 表头={csv_header}")
+    
+    # 决定是否需要提供列名
+    use_names = None
+    if csv_header is None:  # 如果无表头，则使用提供的列名
+        use_names = column_names
+    
     for file in files:
         print(f"读取文件: {file}")
         try:
-            df = pd.read_csv(file, escapechar='\\', quotechar='"', dtype=dtypes)
+            df = pd.read_csv(file, sep=csv_sep, header=csv_header, names=use_names,
+                           escapechar='\\', quotechar='"', dtype=dtypes)
             print(f"  行数: {len(df)}")
             dfs.append(df)
         except Exception as e:

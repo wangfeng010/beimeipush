@@ -1,6 +1,14 @@
 train_dir: data/train
 val_dir: data/train
 
+# CSV格式设置
+csv_format:
+  # separator: ","  # 本地环境使用逗号分隔符
+  # header: 0       # 本地环境有表头(0表示第一行是表头)
+  线上环境请修改为：
+  separator: "\t"  # 制表符分隔
+  header: null     # 无表头
+
 raw_data_columns:
   - user_id: string
   - create_time: string
