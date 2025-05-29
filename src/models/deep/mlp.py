@@ -40,9 +40,9 @@ class MLP(tf.keras.Model):
             
         Returns:
             tuple: (layers, dropout_rates, l2_reg)
-                layers: 隐藏层大小列表
-                dropout_rates: Dropout比例列表
-                l2_reg: L2正则化系数
+            layers: 隐藏层大小列表
+            dropout_rates: Dropout比例列表
+            l2_reg: L2正则化系数
         """
         # 默认模型参数
         default_layers = [64, 32]

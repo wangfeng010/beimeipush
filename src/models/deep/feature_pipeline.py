@@ -110,9 +110,13 @@ class FeaturePipelineBuilder:
                 name=f"str_to_number_{operation.get('col_in', 'unknown')}"
             )
         
-        # 特殊处理SplitEmbedding，将旧格式参数转换为config格式
+        # 特殊处理需要使用config参数的处理器
         if func_name == 'SplitEmbedding':
             return self._create_split_embedding_processor(func_parameters)
+        elif func_name == 'BertEmbedding':
+            return self._create_bert_embedding_processor(func_parameters)
+        elif func_name == 'PrecomputedEmbedding':
+            return self._create_precomputed_embedding_processor(func_parameters)
         
         # 创建处理器实例
         return processor_dict[func_name](**func_parameters)
@@ -137,6 +141,48 @@ class FeaturePipelineBuilder:
         
         # 创建并返回处理器
         return SplitEmbedding(config=config)
+    
+    def _create_bert_embedding_processor(self, parameters: Dict[str, Any]) -> tf.keras.layers.Layer:
+        """
+        创建BertEmbedding处理器，将参数转换为config格式
+        
+        参数:
+            parameters: 操作参数
+            
+        返回:
+            processor: BertEmbedding处理器实例
+        """
+        # 获取处理器类
+        BertEmbedding = self.single_processor_dict['BertEmbedding']
+        
+        # 将参数转换为config字典格式
+        config = {}
+        for key, value in parameters.items():
+            config[key] = value
+        
+        # 创建并返回处理器
+        return BertEmbedding(config=config)
+    
+    def _create_precomputed_embedding_processor(self, parameters: Dict[str, Any]) -> tf.keras.layers.Layer:
+        """
+        创建PrecomputedEmbedding处理器，将参数转换为config格式
+        
+        参数:
+            parameters: 操作参数
+            
+        返回:
+            processor: PrecomputedEmbedding处理器实例
+        """
+        # 获取处理器类
+        PrecomputedEmbedding = self.single_processor_dict['PrecomputedEmbedding']
+        
+        # 将参数转换为config字典格式
+        config = {}
+        for key, value in parameters.items():
+            config[key] = value
+        
+        # 创建并返回处理器
+        return PrecomputedEmbedding(config=config)
     
     def _select_processor_dict(self, pipeline: Dict[str, Any]) -> Dict[str, Any]:
         """

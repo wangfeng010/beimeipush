@@ -205,6 +205,21 @@ def train_and_evaluate_model(
     # 3. 输出训练结果
     print_training_results(history)
     
+    # 打印模型的特征管道信息
+    print("\n模型特征管道信息:")
+    if hasattr(model, 'feature_pipelines'):
+        print(f"共有 {len(model.feature_pipelines)} 个特征处理管道")
+        for idx, (feature_name, processors) in enumerate(model.feature_pipelines):
+            processor_names = [p.__class__.__name__ for p in processors]
+            print(f"管道 #{idx+1}: 输入特征 '{feature_name}' -> 处理器: {' -> '.join(processor_names)}")
+            
+            # 特别标记BERT相关特征管道
+            for processor in processors:
+                if any(bert_class in processor.__class__.__name__ for bert_class in ['BertEmbedding', 'PrecomputedEmbedding']):
+                    print(f"  [高级特征] 发现BERT/预计算处理器: {processor.__class__.__name__}")
+    else:
+        print("模型没有定义特征处理管道")
+    
     # 4. 评估特征重要性
     print("\n开始评估特征重要性...")
     feature_importance = check_feature_importance(

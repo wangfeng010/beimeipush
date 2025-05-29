@@ -169,6 +169,35 @@ pipelines:
           padding_value: "NULL"
           pooling: None
           
+  - feat_name: title_content_bert_cross
+    feat_type: SparseFeature
+    operations:
+      - col_in: push_title
+        col_out: push_title_prep
+        func_name: FillNaString
+        func_parameters:
+          fill_value: ""
+      - col_in: push_content
+        col_out: push_content_prep
+        func_name: FillNaString
+        func_parameters:
+          fill_value: ""
+      - col_in_list: [push_title_prep, push_content_prep]
+        col_out: title_content_cross
+        func_name: StringConcat
+        func_parameters:
+          sep: " "
+      - col_in: title_content_cross
+        col_out: title_content_cross_bert_emb
+        func_name: BertEmbedding
+        func_parameters:
+          model_url: "https://tfhub.dev/tensorflow/small_bert/bert_en_uncased_L-2_H-128_A-2/2"
+          output_dim: 64
+          max_seq_length: 64
+          pooling_strategy: "cls"
+          trainable: False
+          padding_value: ""
+          
   - feat_name: title_content_cross
     feat_type: SparseFeature
     operations:
@@ -195,3 +224,21 @@ pipelines:
           vocab_size: 15000
           padding_value: ""
           pooling: None
+  
+  # 新增使用预先计算的BERT embedding特征
+  - feat_name: title_content_precomputed_emb
+    feat_type: SparseFeature
+    operations:
+      # 创建行索引 (数据集名称:行索引)
+      - col_in: create_time
+        col_out: dataset_prefix
+        func_name: StringConcat
+        func_parameters:
+          sep: ""
+      # 加载预先计算的embedding
+      - col_in: dataset_prefix
+        col_out: title_content_precomputed_emb
+        func_name: PrecomputedEmbedding
+        func_parameters:
+          embedding_dir: "data/precomputed_embeddings"
+          embedding_dim: 128

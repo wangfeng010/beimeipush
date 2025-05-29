@@ -151,3 +151,9 @@ logs/
 *.keras
 
 py38env/
+
+*.pkl
+
+models/best_model
+models/final_model
+models/push_binary_classification_model

@@ -17,15 +17,15 @@ class SplitEmbedding(Layer):
 
     Attributes:
         config: 包含以下配置项的字典：
-            first_sep (str): 第一次拆分使用的分隔符，默认为 "|"。
-            second_sep (str): 第二次拆分使用的分隔符，默认为 "#"。
-            second_sep_pos (int): 第二次拆分的位置，默认为 0。
-            padding_value (str): 用于填充的值，默认为 "PAD"。
-            second_sep_item_num (int): 第二次拆分后保留的项数，默认为 2。
-            max_length (int): 拆分后的最大长度，默认为 5。
-            embedding_dim (int): 嵌入向量的维度，默认为 10。
-            vocab_size (int): 词汇表的大小，默认为 1000。
-            pooling (Optional[str]): 池化方法，可选值为 "mean"、"max" 或 None，默认为 "mean"。
+        first_sep (str): 第一次拆分使用的分隔符，默认为 "|"。
+        second_sep (str): 第二次拆分使用的分隔符，默认为 "#"。
+        second_sep_pos (int): 第二次拆分的位置，默认为 0。
+        padding_value (str): 用于填充的值，默认为 "PAD"。
+        second_sep_item_num (int): 第二次拆分后保留的项数，默认为 2。
+        max_length (int): 拆分后的最大长度，默认为 5。
+        embedding_dim (int): 嵌入向量的维度，默认为 10。
+        vocab_size (int): 词汇表的大小，默认为 1000。
+        pooling (Optional[str]): 池化方法，可选值为 "mean"、"max" 或 None，默认为 "mean"。
     """
 
     # 默认配置
@@ -130,8 +130,8 @@ if __name__ == "__main__":
 
     # 测试数据
     input_data = tf.constant([
-        "德邦证券,吕品#5|中信建投证券,卢昊#2",
-        "国海证券,刘熹#2|东北证券,王凤华#1|中航证券,李蔚#1",
+            "德邦证券,吕品#5|中信建投证券,卢昊#2",
+            "国海证券,刘熹#2|东北证券,王凤华#1|中航证券,李蔚#1",
     ])
     labels = tf.constant([1, 0])  # 假设是二分类标签
     
