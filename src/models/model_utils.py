@@ -75,12 +75,13 @@ def _compile_model(
         learning_rate = 0.0005
         weight_decay = 0.001
     
-    # 创建学习率调度器
-    lr_schedule = _create_lr_schedule(learning_rate)
+    # 使用固定学习率，而不是调度器，避免兼容性问题
+    # 注释掉原有的调度器代码
+    # lr_schedule = _create_lr_schedule(learning_rate)
     
     # 编译模型
     model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=lr_schedule),
+        optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),  # 使用固定学习率
         loss=tf.keras.losses.BinaryCrossentropy(),
         metrics=[tf.keras.metrics.AUC(name='auc')]
     )

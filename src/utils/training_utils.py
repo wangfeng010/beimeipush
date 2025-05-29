@@ -41,18 +41,20 @@ def train_model(model, dataset, train_dataset, validation_dataset, train_config=
     
     # Define callbacks
     callbacks = [
-        # Model checkpoint
+        # Model checkpoint - using SavedModel format instead of HDF5
         tf.keras.callbacks.ModelCheckpoint(
-            filepath="./models/push_binary_classification_model.keras",
+            filepath="./models/push_binary_classification_model",
             save_best_only=False,
-            save_weights_only=False),
-        # Save best model
+            save_weights_only=False,
+            save_format="tf"),  # 使用SavedModel格式
+        # Save best model - using SavedModel format
         tf.keras.callbacks.ModelCheckpoint(
-            filepath="./models/best_model.keras",
+            filepath="./models/best_model",
             save_best_only=True,
             monitor='val_auc',
             mode='max',
-            save_weights_only=False),
+            save_weights_only=False,
+            save_format="tf"),  # 使用SavedModel格式
         # Early stopping
         tf.keras.callbacks.EarlyStopping(
             monitor='val_auc',
