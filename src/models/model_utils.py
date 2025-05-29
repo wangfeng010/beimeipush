@@ -5,7 +5,7 @@
 模型工具模块，提供模型创建和测试功能
 """
 
-from typing import Type, Dict, List, Any, Optional, Union, Callable, Tuple
+from typing import Type, Dict, List, Any, Optional, Union, Tuple
 
 import tensorflow as tf
 from src.utils.config_loader import load_feature_config
@@ -18,12 +18,12 @@ def create_and_compile_model(
     """
     创建并编译模型
     
-    参数:
+    Args:
         model_class: 模型类
         train_config: 训练配置字典
         
-    返回:
-        model: 编译后的模型
+    Returns:
+        编译后的模型实例
     """
     # 加载特征配置
     pipelines_config = _load_feature_pipelines_config()
@@ -44,8 +44,8 @@ def _load_feature_pipelines_config() -> List[Dict[str, Any]]:
     """
     加载特征管道配置
     
-    返回:
-        pipelines_config: 特征管道配置列表
+    Returns:
+        特征管道配置列表
     """
     # 排除不需要的特征
     exclude_features = ['user_id']
@@ -63,7 +63,7 @@ def _compile_model(
     """
     配置并编译模型
     
-    参数:
+    Args:
         model: 待编译的模型
         train_config: 训练配置字典
     """
@@ -75,13 +75,9 @@ def _compile_model(
         learning_rate = 0.0005
         weight_decay = 0.001
     
-    # 使用固定学习率，而不是调度器，避免兼容性问题
-    # 注释掉原有的调度器代码
-    # lr_schedule = _create_lr_schedule(learning_rate)
-    
     # 编译模型
     model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),  # 使用固定学习率
+        optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
         loss=tf.keras.losses.BinaryCrossentropy(),
         metrics=[tf.keras.metrics.AUC(name='auc')]
     )
@@ -95,13 +91,13 @@ def _get_config_value(
     """
     从配置字典中获取嵌套值
     
-    参数:
+    Args:
         config: 配置字典
         path: 点分隔的路径，例如 'training.lr'
         default_value: 未找到值时的默认值
     
-    返回:
-        value: 配置值或默认值
+    Returns:
+        配置值或默认值
     """
     if config is None:
         return default_value
@@ -120,29 +116,11 @@ def _get_config_value(
         return default_value
 
 
-def _create_lr_schedule(base_lr: float) -> tf.keras.optimizers.schedules.LearningRateSchedule:
-    """
-    创建学习率调度器
-    
-    参数:
-        base_lr: 基础学习率
-    
-    返回:
-        lr_schedule: 学习率调度器
-    """
-    return tf.keras.optimizers.schedules.ExponentialDecay(
-        base_lr,
-        decay_steps=100,
-        decay_rate=0.96,
-        staircase=True
-    )
-
-
 def print_feature_pipelines(model: tf.keras.Model) -> None:
     """
     打印模型的特征管道配置信息
     
-    参数:
+    Args:
         model: 模型实例
     """
     print("\n=== 特征管道配置信息 ===")
@@ -161,12 +139,12 @@ def test_model_on_batch(
     """
     在单个批次上测试模型
     
-    参数:
+    Args:
         model: 模型实例
         dataset: 测试数据集
         
-    返回:
-        成功: True，失败: False
+    Returns:
+        True表示测试成功，False表示测试失败
     """
     print("尝试对一个批次应用模型...")
     try:
@@ -186,7 +164,7 @@ def _test_model_prediction(
     """
     使用给定特征测试模型预测
     
-    参数:
+    Args:
         model: 模型实例
         features: 特征字典
     """
