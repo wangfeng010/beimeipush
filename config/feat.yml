@@ -1,3 +1,21 @@
+# 注释掉user_id特征以验证其对模型的影响
+# - feat_name: user_id_emb
+#   feat_type: SparseFeature
+#   operations:
+#     - col_in: user_id
+#       col_out: user_id
+#       func_name: FillNaString
+#       func_parameters:
+#         fill_value: "0"
+#     - col_in: user_id
+#       col_out: user_id_emb
+#       func_name: StrEmbedding
+#       func_parameters:
+#         embedding_dim: 16
+#         vocab_size: 10000
+#         padding_value: "0"
+#         pooling: None
+
 pipelines:
   - feat_name: user_id_emb
     feat_type: SparseFeature
@@ -89,13 +107,11 @@ pipelines:
           fill_value: "NULL#0"
       - col_in: user_propernoun
         col_out: user_propernoun_emb
-        func_name: SplitEmbedding
+        func_name: EntityOnlyEmbedding
         func_parameters:
           first_sep: "|"
           second_sep: "#"
-          second_sep_pos: 0
           padding_value: "NULL"
-          second_sep_item_num: 2
           max_length: 10
           embedding_dim: 16
           vocab_size: 3000

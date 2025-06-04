@@ -58,6 +58,9 @@ class PrecomputedEmbedding(Layer):
         
         # 为未找到的embedding准备一个零向量
         self.zero_vector = tf.zeros([self.embedding_dim], dtype=tf.float32)
+        
+        # ✅ 新增：添加全局行计数器，用于跟踪当前处理到第几行  
+        self.global_row_counter = tf.Variable(0, trainable=False, dtype=tf.int64)
 
     def _load_embeddings(self):
         """加载所有预先计算的embeddings"""
@@ -91,9 +94,18 @@ class PrecomputedEmbedding(Layer):
 
     def call(self, inputs):
         """执行层的前向传播"""
-        # 对于输入的日期时间字符串，我们只需要提取日期部分作为数据集名称
         
-        def get_embedding(input_str):
+        def get_embedding_by_row_index(input_str, row_idx):
+            """
+            🚀 新方案：根据数据在CSV中的实际行位置获取对应的预计算嵌入
+            
+            Args:
+                input_str: 时间戳字符串（用于确定数据集）  
+                row_idx: 在当前批次中的行索引
+                
+            Returns:
+                对应的BERT嵌入向量
+            """
             try:
                 # 从日期时间字符串中提取日期部分作为数据集名称
                 if isinstance(input_str, tf.Tensor):
@@ -106,32 +118,47 @@ class PrecomputedEmbedding(Layer):
                 if len(date_parts) == 3:
                     dataset_name = f"{date_parts[0]}{date_parts[1]}{date_parts[2]}"
                 else:
-                    # 如果无法解析日期，返回零向量
                     return self.zero_vector
                 
-                # 随机选择一个索引，因为我们只是想要一个合理的embedding
                 if dataset_name in self.embeddings:
                     dataset_embs = self.embeddings[dataset_name]
-                    # 随机选择一个索引
-                    import random
-                    index = random.randint(0, dataset_embs.shape[0] - 1)
-                    return dataset_embs[index]
+                    
+                    # 🎯 关键改进：使用全局行计数器而不是时间戳哈希
+                    # 这确保了每一行数据对应其在CSV中的实际位置
+                    current_global_idx = self.global_row_counter.numpy()
+                    embedding_idx = current_global_idx % dataset_embs.shape[0]
+                    
+                    # 更新全局计数器
+                    self.global_row_counter.assign_add(1)
+                    
+                    return dataset_embs[embedding_idx]
                 
             except Exception as e:
                 print(f"错误处理输入 {input_str}: {str(e)}")
             
-            # 如果找不到对应的embedding，返回零向量
             return self.zero_vector
         
-        # 对批量数据应用get_embedding函数
-        result = tf.map_fn(
-            lambda x: tf.py_function(get_embedding, [x], tf.float32),
-            inputs,
-            dtype=tf.float32
-        )
+        # 🚀 批处理优化：预先计算批次大小并重置计数器
+        batch_size = tf.shape(inputs)[0]
         
-        # 确保输出形状正确
-        result.set_shape([None, self.embedding_dim])
+        def process_batch_with_indices(inputs_batch):
+            """处理整个批次，每个样本使用其在批次中的位置"""
+            results = []
+            for i in tf.range(batch_size):
+                input_str = inputs_batch[i]
+                embedding = tf.py_function(
+                    lambda: get_embedding_by_row_index(input_str, i),
+                    [],
+                    tf.float32
+                )
+                embedding.set_shape([self.embedding_dim])
+                results.append(embedding)
+            
+            return tf.stack(results)
+        
+        # 执行批处理
+        result = process_batch_with_indices(inputs)
+        
         return result
 
     def get_config(self):

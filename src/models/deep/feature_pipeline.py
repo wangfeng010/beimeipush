@@ -113,6 +113,8 @@ class FeaturePipelineBuilder:
         # 特殊处理需要使用config参数的处理器
         if func_name == 'SplitEmbedding':
             return self._create_split_embedding_processor(func_parameters)
+        elif func_name == 'EntityOnlyEmbedding':
+            return self._create_entity_only_embedding_processor(func_parameters)
         elif func_name == 'BertEmbedding':
             return self._create_bert_embedding_processor(func_parameters)
         elif func_name == 'PrecomputedEmbedding':
@@ -141,6 +143,27 @@ class FeaturePipelineBuilder:
         
         # 创建并返回处理器
         return SplitEmbedding(config=config)
+    
+    def _create_entity_only_embedding_processor(self, parameters: Dict[str, Any]) -> tf.keras.layers.Layer:
+        """
+        创建EntityOnlyEmbedding处理器，将参数转换为config格式
+        
+        参数:
+            parameters: 操作参数
+            
+        返回:
+            processor: EntityOnlyEmbedding处理器实例
+        """
+        # 获取处理器类
+        EntityOnlyEmbedding = self.single_processor_dict['EntityOnlyEmbedding']
+        
+        # 将参数转换为config字典格式
+        config = {}
+        for key, value in parameters.items():
+            config[key] = value
+        
+        # 创建并返回处理器
+        return EntityOnlyEmbedding(config=config)
     
     def _create_bert_embedding_processor(self, parameters: Dict[str, Any]) -> tf.keras.layers.Layer:
         """

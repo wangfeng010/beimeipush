@@ -177,6 +177,13 @@ def _should_exclude_pipeline(
     Returns:
         如果管道应该被排除则返回True，否则返回False
     """
+    # 检查特征名称是否应该被排除
+    feat_name = pipeline.get('feat_name', '')
+    for exclude_feature in exclude_features:
+        if exclude_feature in feat_name:
+            print(f"排除特征管道: {feat_name} (包含排除关键词: {exclude_feature})")
+            return True
+    
     # 检查管道的第一个操作是否针对被排除的特征
     if 'operations' in pipeline and pipeline['operations']:
         first_op = pipeline['operations'][0]

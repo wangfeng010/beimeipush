@@ -5,7 +5,7 @@ from .fillna_string import FillNaString
 from .log1p import Log1pTransform
 from .precomputed_embedding import PrecomputedEmbedding
 from .segment_transform import SegmentTransform
-from .split_embedding import SplitEmbedding
+from .split_embedding import SplitEmbedding, EntityOnlyEmbedding
 from .split_processor import SplitProcessor
 from .split_transform import SplitTransform
 from .str_embedding import StrEmbedding
@@ -26,6 +26,7 @@ SINGLE_PROCESSOR_DICT = {
     "StringConcat": StringConcat,
     "ToMapTransform": ToMapTransform,
     "SplitEmbedding": SplitEmbedding,
+    "EntityOnlyEmbedding": EntityOnlyEmbedding,
     "SumPooling": SumPooling,
     "SplitTransform": SplitTransform,
 }
