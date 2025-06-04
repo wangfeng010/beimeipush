@@ -18,13 +18,15 @@ class PrecomputedEmbedding(Layer):
             embedding_dir (str): 预先计算的embedding目录
             embedding_dim (int): embedding向量的维度
             id_map_file (str): 可选，ID到索引的映射文件
+            embedding_type (str): 嵌入类型，可选值为"title_content"、"push_title"、"push_content"
     """
 
     # 默认配置
     DEFAULT_CONFIG = {
         "embedding_dir": "data/precomputed_embeddings",
-        "embedding_dim": 64,
+        "embedding_dim": 128,
         "id_map_file": None,
+        "embedding_type": "title_content",  # 新增参数，支持不同类型的嵌入
     }
 
     def __init__(self, config: Optional[Dict[str, Any]] = None, **kwargs):
@@ -47,6 +49,7 @@ class PrecomputedEmbedding(Layer):
         self.embedding_dir = self.config["embedding_dir"]
         self.embedding_dim = self.config["embedding_dim"]
         self.id_map_file = self.config["id_map_file"]
+        self.embedding_type = self.config["embedding_type"]
         
         # 加载数据结构
         self.embeddings = {}
@@ -58,24 +61,28 @@ class PrecomputedEmbedding(Layer):
 
     def _load_embeddings(self):
         """加载所有预先计算的embeddings"""
-        print(f"加载预先计算的embeddings，目录: {self.embedding_dir}")
+        print(f"加载预先计算的embeddings，目录: {self.embedding_dir}，类型: {self.embedding_type}")
         
         # 检查embedding目录是否存在
         if not os.path.exists(self.embedding_dir):
             print(f"警告: embedding目录不存在: {self.embedding_dir}")
             return
         
+        # 根据embedding_type选择对应的文件后缀
+        embedding_suffix = f"{self.embedding_type}_embeddings.pkl"
+        
         # 加载所有embedding文件
         for filename in os.listdir(self.embedding_dir):
-            if filename.endswith("_embeddings.pkl"):
+            if filename.endswith(embedding_suffix):
                 file_path = os.path.join(self.embedding_dir, filename)
-                dataset_name = filename.split('_embeddings.pkl')[0]
+                # 从文件名中提取数据集名称
+                dataset_name = filename.split(f"_{self.embedding_type}_embeddings.pkl")[0]
                 
                 with open(file_path, 'rb') as f:
                     embeddings = pickle.load(f)
                     self.embeddings[dataset_name] = tf.convert_to_tensor(embeddings, dtype=tf.float32)
                 
-                print(f"加载了embedding文件: {filename}, 形状: {embeddings.shape}")
+                print(f"加载了{self.embedding_type} embedding文件: {filename}, 形状: {embeddings.shape}")
         
         # 如果指定了ID映射文件，则加载它
         if self.id_map_file and os.path.exists(self.id_map_file):
@@ -144,15 +151,16 @@ if __name__ == "__main__":
     
     # 创建测试数据
     os.makedirs("test_embeddings", exist_ok=True)
-    test_embeddings = np.random.random((100, 64)).astype(np.float32)
-    with open("test_embeddings/test_embeddings.pkl", 'wb') as f:
+    test_embeddings = np.random.random((100, 128)).astype(np.float32)
+    with open("test_embeddings/test_title_content_embeddings.pkl", 'wb') as f:
         pickle.dump(test_embeddings, f)
     
     # 创建模型
     input_layer = Input(shape=(), dtype=tf.string)
     embedding_layer = PrecomputedEmbedding(config={
         "embedding_dir": "test_embeddings",
-        "embedding_dim": 64
+        "embedding_dim": 128,
+        "embedding_type": "title_content"
     })
     output = embedding_layer(input_layer)
     model = Model(inputs=input_layer, outputs=output)

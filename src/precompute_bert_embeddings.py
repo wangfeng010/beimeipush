@@ -124,11 +124,17 @@ def main():
     for csv_file in csv_files:
         filename = os.path.basename(csv_file)
         dataset_name = os.path.splitext(filename)[0]
-        output_file = os.path.join(embedding_dir, f"{dataset_name}_embeddings.pkl")
         
-        # 如果embedding文件已经存在，跳过
-        if os.path.exists(output_file):
-            print(f"跳过已存在的embedding文件: {output_file}")
+        # 定义不同类型的embedding输出文件
+        title_content_output_file = os.path.join(embedding_dir, f"{dataset_name}_title_content_embeddings.pkl")
+        title_output_file = os.path.join(embedding_dir, f"{dataset_name}_title_embeddings.pkl")
+        content_output_file = os.path.join(embedding_dir, f"{dataset_name}_content_embeddings.pkl")
+        
+        # 检查是否所有文件都已存在，如果存在则跳过
+        if (os.path.exists(title_content_output_file) and 
+            os.path.exists(title_output_file) and 
+            os.path.exists(content_output_file)):
+            print(f"跳过已存在的embedding文件: {dataset_name}")
             continue
         
         print(f"处理文件: {csv_file}")
@@ -136,14 +142,20 @@ def main():
         # 读取CSV文件
         df = pd.read_csv(csv_file, sep=separator, header=header)
         
-        # 为每一行添加唯一ID和索引映射
+        # 为每一行添加唯一ID
         df["row_id"] = dataset_name + ":" + df.index.astype(str)
         
-        # 合并标题和内容
-        df["title_content"] = df["push_title"].fillna("") + " " + df["push_content"].fillna("")
+        # 填充空值
+        df["push_title"] = df["push_title"].fillna("")
+        df["push_content"] = df["push_content"].fillna("")
         
-        # 生成embeddings
-        embeddings = process_in_batches(
+        # 合并标题和内容用于组合嵌入
+        df["title_content"] = df["push_title"] + " " + df["push_content"]
+        
+        # 1. 生成标题+内容的组合embeddings
+        if not os.path.exists(title_content_output_file):
+            print(f"生成标题+内容的组合embeddings...")
+            title_content_embeddings = process_in_batches(
             df["title_content"].values, 
             preprocessing, 
             encoder,
@@ -152,15 +164,54 @@ def main():
         )
         
         # 保存embeddings
-        with open(output_file, 'wb') as f:
-            pickle.dump(embeddings, f)
+            with open(title_content_output_file, 'wb') as f:
+                pickle.dump(title_content_embeddings, f)
         
-        print(f"Embeddings已保存到: {output_file}")
-        print(f"Embedding形状: {embeddings.shape}")
+            print(f"标题+内容embeddings已保存到: {title_content_output_file}")
+            print(f"Embedding形状: {title_content_embeddings.shape}")
+        
+        # 2. 生成仅标题的embeddings
+        if not os.path.exists(title_output_file):
+            print(f"生成仅标题的embeddings...")
+            title_embeddings = process_in_batches(
+                df["push_title"].values, 
+                preprocessing, 
+                encoder,
+                batch_size=64,
+                max_seq_length=bert_config.get("max_seq_length", 64)
+            )
+            
+            # 保存embeddings
+            with open(title_output_file, 'wb') as f:
+                pickle.dump(title_embeddings, f)
+            
+            print(f"标题embeddings已保存到: {title_output_file}")
+            print(f"Embedding形状: {title_embeddings.shape}")
+        
+        # 3. 生成仅内容的embeddings
+        if not os.path.exists(content_output_file):
+            print(f"生成仅内容的embeddings...")
+            content_embeddings = process_in_batches(
+                df["push_content"].values, 
+                preprocessing, 
+                encoder,
+                batch_size=64,
+                max_seq_length=bert_config.get("max_seq_length", 64)
+            )
+            
+            # 保存embeddings
+            with open(content_output_file, 'wb') as f:
+                pickle.dump(content_embeddings, f)
+            
+            print(f"内容embeddings已保存到: {content_output_file}")
+            print(f"Embedding形状: {content_embeddings.shape}")
         
         # 更新ID映射
         for i, row_id in enumerate(df["row_id"].values):
-            id_map[row_id] = (dataset_name, i)
+            id_map[row_id] = {
+                "dataset_name": dataset_name,
+                "index": i
+            }
     
     # 保存ID映射
     id_map_file = os.path.join(embedding_dir, "id_map.pkl")

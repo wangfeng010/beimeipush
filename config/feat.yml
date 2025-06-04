@@ -11,7 +11,7 @@ pipelines:
         col_out: user_id_emb
         func_name: StrEmbedding
         func_parameters:
-          embedding_dim: 8
+          embedding_dim: 16
           vocab_size: 10000
           padding_value: "0"
           pooling: None
@@ -35,7 +35,7 @@ pipelines:
         col_out: watchlists_emb
         func_name: StrEmbedding
         func_parameters:
-          embedding_dim: 8
+          embedding_dim: 16
           vocab_size: 2000
           padding_value: "NULL"
           pooling: "mean"
@@ -52,7 +52,7 @@ pipelines:
         col_out: country_emb
         func_name: StrEmbedding
         func_parameters:
-          embedding_dim: 8
+          embedding_dim: 16
           vocab_size: 300
           padding_value: "unknown"
           pooling: None
@@ -75,7 +75,7 @@ pipelines:
           padding_value: "NULL"
           second_sep_item_num: 2
           max_length: 5
-          embedding_dim: 8
+          embedding_dim: 16
           vocab_size: 500
           pooling: "mean"
   
@@ -101,6 +101,7 @@ pipelines:
           vocab_size: 3000
           pooling: "mean"
   
+  # 第一套：基本字符串嵌入 - 标题
   - feat_name: push_title_emb
     feat_type: SparseFeature
     operations:
@@ -118,6 +119,7 @@ pipelines:
           padding_value: ""
           pooling: None
   
+  # 第一套：基本字符串嵌入 - 内容
   - feat_name: push_content_emb
     feat_type: SparseFeature
     operations:
@@ -130,7 +132,7 @@ pipelines:
         col_out: push_content_emb
         func_name: StrEmbedding
         func_parameters:
-          embedding_dim: 32
+          embedding_dim: 16
           vocab_size: 10000
           padding_value: ""
           pooling: None
@@ -147,7 +149,7 @@ pipelines:
         col_out: item_code_emb
         func_name: StrEmbedding
         func_parameters:
-          embedding_dim: 8
+          embedding_dim: 16
           vocab_size: 1000
           padding_value: "NULL"
           pooling: None
@@ -164,40 +166,12 @@ pipelines:
         col_out: item_tags_emb
         func_name: StrEmbedding
         func_parameters:
-          embedding_dim: 8
+          embedding_dim: 16
           vocab_size: 1000
           padding_value: "NULL"
           pooling: None
           
-  - feat_name: title_content_bert_cross
-    feat_type: SparseFeature
-    operations:
-      - col_in: push_title
-        col_out: push_title_prep
-        func_name: FillNaString
-        func_parameters:
-          fill_value: ""
-      - col_in: push_content
-        col_out: push_content_prep
-        func_name: FillNaString
-        func_parameters:
-          fill_value: ""
-      - col_in_list: [push_title_prep, push_content_prep]
-        col_out: title_content_cross
-        func_name: StringConcat
-        func_parameters:
-          sep: " "
-      - col_in: title_content_cross
-        col_out: title_content_cross_bert_emb
-        func_name: BertEmbedding
-        func_parameters:
-          model_url: "https://tfhub.dev/tensorflow/small_bert/bert_en_uncased_L-2_H-128_A-2/2"
-          output_dim: 64
-          max_seq_length: 64
-          pooling_strategy: "cls"
-          trainable: False
-          padding_value: ""
-          
+  # 第一套：基本字符串嵌入 - 标题和内容组合
   - feat_name: title_content_cross
     feat_type: SparseFeature
     operations:
@@ -225,11 +199,11 @@ pipelines:
           padding_value: ""
           pooling: None
   
-  # 新增使用预先计算的BERT embedding特征
+  # 第二套：预计算BERT嵌入 - 组合文本
   - feat_name: title_content_precomputed_emb
     feat_type: SparseFeature
     operations:
-      # 创建行索引 (数据集名称:行索引)
+      # 创建索引
       - col_in: create_time
         col_out: dataset_prefix
         func_name: StringConcat
@@ -242,3 +216,38 @@ pipelines:
         func_parameters:
           embedding_dir: "data/precomputed_embeddings"
           embedding_dim: 128
+          embedding_type: "title_content"
+  
+  # 第二套：预计算BERT嵌入 - 仅标题
+  - feat_name: push_title_bert_emb
+    feat_type: SparseFeature
+    operations:
+      - col_in: create_time
+        col_out: dataset_prefix
+        func_name: StringConcat
+        func_parameters:
+          sep: ""
+      - col_in: dataset_prefix
+        col_out: push_title_bert_emb
+        func_name: PrecomputedEmbedding
+        func_parameters:
+          embedding_dir: "data/precomputed_embeddings"
+          embedding_dim: 128
+          embedding_type: "push_title"
+  
+  # 第二套：预计算BERT嵌入 - 仅内容
+  - feat_name: push_content_bert_emb
+    feat_type: SparseFeature
+    operations:
+      - col_in: create_time
+        col_out: dataset_prefix
+        func_name: StringConcat
+        func_parameters:
+          sep: ""
+      - col_in: dataset_prefix
+        col_out: push_content_bert_emb
+        func_name: PrecomputedEmbedding
+        func_parameters:
+          embedding_dir: "data/precomputed_embeddings"
+          embedding_dim: 128
+          embedding_type: "push_content"

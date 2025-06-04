@@ -184,9 +184,8 @@ def _get_processed_feature_names(model: tf.keras.Model) -> List[str]:
     
     # 添加一些常见的特殊处理后特征名称，以防上面的逻辑漏掉
     special_feature_names = [
-        "title_content_cross_bert_emb",
-        "title_content_cross_emb",
-        "title_content_precomputed_emb"
+        "title_content_precomputed_emb",
+        "title_content_cross_emb"
     ]
     
     for name in special_feature_names:
@@ -263,13 +262,10 @@ def _evaluate_processed_features(
     
     # 特殊特征到输入特征的映射字典
     feature_mapping = {
-        # BERT特征映射
-        "title_content_cross_bert_emb": ["push_title", "push_content"],
+        # 预计算embedding映射
+        "title_content_precomputed_emb": ["push_title", "push_content"],
         "push_title_bert_emb": ["push_title"],
         "push_content_bert_emb": ["push_content"],
-        
-        # 预计算embedding映射
-        "title_content_precomputed_emb": ["create_time"],  # 预计算特征使用create_time作为索引
         "dataset_prefix_precomputed_emb": ["create_time"],
         
         # 普通特征映射
