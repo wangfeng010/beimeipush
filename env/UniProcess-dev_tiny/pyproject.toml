@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "rec-preprocess"
+version = "0.2.6"
+description = "统一的数据预处理框架。基于算子构建数据管道，实现数据预处理的一致性。"
+authors = ["zhangyu6 <zhangyu6@myhexin.com>"]
+readme = "README.md"
+packages = [{include = "uniprocess"}]
+
+
+[tool.poetry.dependencies]
+python = "^3.8"
+pyyaml = "^6.0.1"
+
+[tool.poetry.dev-dependencies]
+loguru = "^0.7.2"
+numpy = "^1.23"
+torch = "^1.13.0"
+
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[[tool.poetry.source]]
+name = "hexin"
+url = "http://repositories.myhexin.com:8081/repository/pypi-public/simple/"
+default = true
