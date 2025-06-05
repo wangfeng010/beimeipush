@@ -95,13 +95,12 @@ class PrecomputedEmbedding(Layer):
     def call(self, inputs):
         """执行层的前向传播"""
         
-        def get_embedding_by_row_index(input_str, row_idx):
+        def get_embedding_by_row_index(input_str):
             """
             🚀 新方案：根据数据在CSV中的实际行位置获取对应的预计算嵌入
             
             Args:
                 input_str: 时间戳字符串（用于确定数据集）  
-                row_idx: 在当前批次中的行索引
                 
             Returns:
                 对应的BERT嵌入向量
@@ -118,7 +117,7 @@ class PrecomputedEmbedding(Layer):
                 if len(date_parts) == 3:
                     dataset_name = f"{date_parts[0]}{date_parts[1]}{date_parts[2]}"
                 else:
-                    return self.zero_vector
+                    return self.zero_vector.numpy()
                 
                 if dataset_name in self.embeddings:
                     dataset_embs = self.embeddings[dataset_name]
@@ -131,33 +130,31 @@ class PrecomputedEmbedding(Layer):
                     # 更新全局计数器
                     self.global_row_counter.assign_add(1)
                     
-                    return dataset_embs[embedding_idx]
+                    return dataset_embs[embedding_idx].numpy()
                 
             except Exception as e:
                 print(f"错误处理输入 {input_str}: {str(e)}")
             
-            return self.zero_vector
+            return self.zero_vector.numpy()
         
-        # 🚀 批处理优化：预先计算批次大小并重置计数器
-        batch_size = tf.shape(inputs)[0]
+        # 🚀 修复作用域问题：使用tf.map_fn替代手动循环
+        def process_single_input(input_str):
+            """处理单个输入"""
+            embedding = tf.py_function(
+                func=get_embedding_by_row_index,
+                inp=[input_str],
+                Tout=tf.float32
+            )
+            embedding.set_shape([self.embedding_dim])
+            return embedding
         
-        def process_batch_with_indices(inputs_batch):
-            """处理整个批次，每个样本使用其在批次中的位置"""
-            results = []
-            for i in tf.range(batch_size):
-                input_str = inputs_batch[i]
-                embedding = tf.py_function(
-                    lambda: get_embedding_by_row_index(input_str, i),
-                    [],
-                    tf.float32
-                )
-                embedding.set_shape([self.embedding_dim])
-                results.append(embedding)
-            
-            return tf.stack(results)
-        
-        # 执行批处理
-        result = process_batch_with_indices(inputs)
+        # 使用tf.map_fn处理整个批次，避免作用域问题
+        result = tf.map_fn(
+            process_single_input,
+            inputs,
+            fn_output_signature=tf.TensorSpec(shape=[self.embedding_dim], dtype=tf.float32),
+            parallel_iterations=1  # 确保顺序处理，保持行计数器的正确性
+        )
         
         return result
 

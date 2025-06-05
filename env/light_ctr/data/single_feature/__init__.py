@@ -2,6 +2,13 @@ from .as_type import AsType
 from .bert_embedding import BertEmbedding
 from .clip import ClipLayer
 from .fillna_string import FillNaString
+from .json_array_processor import (
+    JsonArrayProcessor, 
+    StockCodeProcessor, 
+    TagProcessor, 
+    ImportanceTagProcessor
+)
+from .json_object_to_list import JsonObjectToList, Padding
 from .log1p import Log1pTransform
 from .precomputed_embedding import PrecomputedEmbedding
 from .segment_transform import SegmentTransform
@@ -17,16 +24,22 @@ SINGLE_PROCESSOR_DICT = {
     "AsType": AsType,
     "BertEmbedding": BertEmbedding,
     "ClipLayer": ClipLayer,
+    "EntityOnlyEmbedding": EntityOnlyEmbedding,
     "FillNaString": FillNaString,
+    "ImportanceTagProcessor": ImportanceTagProcessor,
+    "JsonArrayProcessor": JsonArrayProcessor,
+    "JsonObjectToList": JsonObjectToList,
     "Log1pTransform": Log1pTransform,
+    "Padding": Padding,
     "PrecomputedEmbedding": PrecomputedEmbedding,
     "SegmentTransform": SegmentTransform,
+    "SplitEmbedding": SplitEmbedding,
     "SplitProcessor": SplitProcessor,
+    "SplitTransform": SplitTransform,
+    "StockCodeProcessor": StockCodeProcessor,
     "StrEmbedding": StrEmbedding,
     "StringConcat": StringConcat,
-    "ToMapTransform": ToMapTransform,
-    "SplitEmbedding": SplitEmbedding,
-    "EntityOnlyEmbedding": EntityOnlyEmbedding,
     "SumPooling": SumPooling,
-    "SplitTransform": SplitTransform,
+    "TagProcessor": TagProcessor,
+    "ToMapTransform": ToMapTransform,
 }

@@ -23,8 +23,10 @@ class FeaturePipelineBuilder:
     def _init_processor_dicts(self):
         """初始化特征处理器字典"""
         # 为模型注册自定义处理器
-        custom_processors = {"CustomFillNaString": CustomFillNaString}
-        # 合并处理器字典
+        custom_processors = {
+            "CustomFillNaString": CustomFillNaString,
+        }
+        # 合并处理器字典 - JSON处理器现在已经在light_ctr框架中
         self.single_processor_dict = {**SINGLE_PROCESSOR_DICT, **custom_processors}
         self.cross_processor_dict = CROSS_PROCESSOR_DICT
     

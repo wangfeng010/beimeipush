@@ -1,21 +1,3 @@
-# 注释掉user_id特征以验证其对模型的影响
-# - feat_name: user_id_emb
-#   feat_type: SparseFeature
-#   operations:
-#     - col_in: user_id
-#       col_out: user_id
-#       func_name: FillNaString
-#       func_parameters:
-#         fill_value: "0"
-#     - col_in: user_id
-#       col_out: user_id_emb
-#       func_name: StrEmbedding
-#       func_parameters:
-#         embedding_dim: 16
-#         vocab_size: 10000
-#         padding_value: "0"
-#         pooling: None
-
 pipelines:
   - feat_name: user_id_emb
     feat_type: SparseFeature
@@ -153,6 +135,7 @@ pipelines:
           padding_value: ""
           pooling: None
   
+  # ✅ 新增：使用StockCodeProcessor处理item_code
   - feat_name: item_code_emb
     feat_type: SparseFeature
     operations:
@@ -162,14 +145,24 @@ pipelines:
         func_parameters:
           fill_value: "NULL"
       - col_in: item_code
+        col_out: item_codes_parsed
+        func_name: StockCodeProcessor
+        func_parameters:
+          extract_fields: ["code", "name", "market"]
+          max_items: 3
+          sep: "|"
+          field_sep: "#"
+          fill_value: "NULL"
+      - col_in: item_codes_parsed
         col_out: item_code_emb
         func_name: StrEmbedding
         func_parameters:
           embedding_dim: 16
-          vocab_size: 1000
+          vocab_size: 2000
           padding_value: "NULL"
           pooling: None
   
+  # ✅ 新增：使用TagProcessor处理item_tags
   - feat_name: item_tags_emb
     feat_type: SparseFeature
     operations:
@@ -179,16 +172,58 @@ pipelines:
         func_parameters:
           fill_value: "NULL"
       - col_in: item_tags
+        col_out: item_tags_parsed
+        func_name: TagProcessor
+        func_parameters:
+          extract_fields: ["name", "tagId"]
+          max_items: 5
+          sep: "|"
+          field_sep: "#"
+          use_score_weighting: true
+          score_threshold: 0.1
+          output_format: "weighted"
+          fill_value: "NULL"
+      - col_in: item_tags_parsed
         col_out: item_tags_emb
         func_name: StrEmbedding
         func_parameters:
           embedding_dim: 16
-          vocab_size: 1000
+          vocab_size: 3000
           padding_value: "NULL"
           pooling: None
-          
+  
+  # ✅ 新增：使用ImportanceTagProcessor提取重要性标签
+  - feat_name: importance_tags_emb
+    feat_type: SparseFeature
+    operations:
+      - col_in: item_tags
+        col_out: item_tags
+        func_name: FillNaString
+        func_parameters:
+          fill_value: "NULL"
+      - col_in: item_tags
+        col_out: importance_tags_parsed
+        func_name: ImportanceTagProcessor
+        func_parameters:
+          extract_fields: ["name"]
+          max_items: 3
+          sep: "|"
+          field_sep: "#"
+          use_score_weighting: true
+          score_threshold: 0.5
+          output_format: "list"
+          fill_value: "NULL"
+      - col_in: importance_tags_parsed
+        col_out: importance_tags_emb
+        func_name: StrEmbedding
+        func_parameters:
+          embedding_dim: 16
+          vocab_size: 500
+          padding_value: "NULL"
+          pooling: None
+  
   # 第一套：基本字符串嵌入 - 标题和内容组合
-  - feat_name: title_content_cross
+  - feat_name: title_content_cross_emb
     feat_type: SparseFeature
     operations:
       - col_in: push_title
