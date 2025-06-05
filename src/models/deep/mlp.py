@@ -15,11 +15,11 @@ from src.models.deep.feature_pipeline import FeaturePipelineBuilder, process_fea
 class MLP(tf.keras.Model):
     """多层感知器模型，用于推送通知二分类"""
 
-    def __init__(self, pipelines_config, train_config=None):
+    def __init__(self, pipelines_config, train_config=None, verbose=False):
         super(MLP, self).__init__()
         
-        # 创建特征处理管道
-        pipeline_builder = FeaturePipelineBuilder()
+        # 创建特征处理管道(在模型初始化时不输出详细日志)
+        pipeline_builder = FeaturePipelineBuilder(verbose=verbose)
         self.feature_pipelines = pipeline_builder.build_feature_pipelines(pipelines_config)
         
         # 创建特征连接层
@@ -32,17 +32,16 @@ class MLP(tf.keras.Model):
         self.classifier = self._build_classifier(layers, dropout_rates, l2_reg)
     
     def _get_model_params(self, train_config: Optional[Dict[str, Any]]) -> Tuple[List[int], List[float], float]:
-        """
-        从训练配置中获取模型参数
+        """从训练配置中获取模型参数
         
         Args:
             train_config: 训练配置字典，如果为None则使用默认参数
             
         Returns:
             tuple: (layers, dropout_rates, l2_reg)
-            layers: 隐藏层大小列表
-            dropout_rates: Dropout比例列表
-            l2_reg: L2正则化系数
+            - layers: 隐藏层大小列表
+            - dropout_rates: Dropout比例列表  
+            - l2_reg: L2正则化系数
         """
         # 默认模型参数
         default_layers = [64, 32]
@@ -62,15 +61,14 @@ class MLP(tf.keras.Model):
         return layers, dropout_rates, l2_reg
     
     def _build_classifier(self, layers, dropout_rates, l2_reg):
-        """
-        构建分类器网络
+        """构建分类器网络
         
-        参数:
+        Args:
             layers: 隐藏层大小列表
             dropout_rates: Dropout比例列表
             l2_reg: L2正则化系数
             
-        返回:
+        Returns:
             classifier: 分类器模型
         """
         classifier_layers = []
@@ -104,13 +102,23 @@ class MLP(tf.keras.Model):
         return tf.keras.Sequential(classifier_layers)
     
     def call(self, features, training=None):
-        """模型前向传播"""
-        # 处理所有特征
-        processed_outputs = process_feature_batch(features, self.feature_pipelines)
+        """模型前向传播
+        
+        Args:
+            features: 输入特征字典
+            training: 是否为训练模式
+            
+        Returns:
+            predictions: 模型预测结果
+        """
+        # 处理所有特征(前向传播时不输出日志，避免过多输出)
+        processed_outputs = process_feature_batch(
+            features, self.feature_pipelines, verbose=False
+        )
         
         # 如果没有有效输出，报告错误
         if not processed_outputs:
-            raise ValueError("没有可用的特征输出，请检查输入特征和特征处理管道")
+            raise ValueError("ERROR: 没有可用的特征输出，请检查输入特征和特征处理管道")
         
         # 合并所有输出
         if len(processed_outputs) > 1:
@@ -119,11 +127,18 @@ class MLP(tf.keras.Model):
             concat_outputs = processed_outputs[0]
         
         # 应用分类器
-        predictions = self.classifier(concat_outputs)
+        predictions = self.classifier(concat_outputs, training=training)
         return predictions
     
     def train_step(self, data):
-        """自定义训练步骤"""
+        """自定义训练步骤
+        
+        Args:
+            data: 训练数据批次(features, labels)
+            
+        Returns:
+            训练结果字典，包含损失和指标
+        """
         features, labels = data
         
         with tf.GradientTape() as tape:
@@ -146,14 +161,13 @@ class MLP(tf.keras.Model):
         return self._get_train_results(loss)
     
     def _compute_loss(self, predictions, labels):
-        """
-        计算模型损失
+        """计算模型损失
         
-        参数:
+        Args:
             predictions: 模型预测值
             labels: 真实标签
             
-        返回:
+        Returns:
             total_loss: 总损失
         """
         # 计算每个样本的损失
@@ -169,10 +183,9 @@ class MLP(tf.keras.Model):
         return total_loss
     
     def _apply_gradients(self, tape, loss):
-        """
-        计算并应用梯度
+        """计算并应用梯度
         
-        参数:
+        Args:
             tape: 梯度带
             loss: 损失值
         """
@@ -183,13 +196,12 @@ class MLP(tf.keras.Model):
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
     
     def _get_train_results(self, loss):
-        """
-        获取训练结果
+        """获取训练结果
         
-        参数:
+        Args:
             loss: 损失值
             
-        返回:
+        Returns:
             results: 训练结果字典
         """
         results = {'loss': loss}

@@ -2,277 +2,363 @@
 # -*- coding: utf-8 -*-
 
 """
-特征处理管道模块
+基于TensorFlow原生Embedding的特征处理管道模块
+专门处理UniProcess输出的哈希整数特征
 """
 
-from typing import Dict, List, Tuple, Any, Optional, Union
-
+from typing import Dict, List, Tuple, Any, Optional
 import tensorflow as tf
-from env.light_ctr.data.single_feature import SINGLE_PROCESSOR_DICT
-from env.light_ctr.data.cross_feature import CROSS_PROCESSOR_DICT
-from src.models.deep.processors import CustomFillNaString
 
 
 class FeaturePipelineBuilder:
-    """特征处理管道构建器"""
+    """基于TensorFlow原生Embedding的特征处理管道构建器"""
     
-    def __init__(self):
-        """初始化特征处理管道构建器"""
-        self._init_processor_dicts()
-    
-    def _init_processor_dicts(self):
-        """初始化特征处理器字典"""
-        # 为模型注册自定义处理器
-        custom_processors = {
-            "CustomFillNaString": CustomFillNaString,
-        }
-        # 合并处理器字典 - JSON处理器现在已经在light_ctr框架中
-        self.single_processor_dict = {**SINGLE_PROCESSOR_DICT, **custom_processors}
-        self.cross_processor_dict = CROSS_PROCESSOR_DICT
-    
-    def build_feature_pipelines(self, pipelines_config: List[Dict[str, Any]]) -> List[Tuple[str, List]]:
-        """
-        构建特征处理管道
+    def __init__(self, verbose: bool = True):
+        """初始化特征处理管道构建器
         
-        参数:
-            pipelines_config: 特征管道配置
-            
-        返回:
-            feature_pipelines: 特征处理管道列表
+        Args:
+            verbose: 是否输出详细日志
         """
-        feature_pipelines = []
+        self.embedding_layers = {}
+        self.pooling_layers = {}
+        self.verbose = verbose
+    
+    def build_feature_pipelines(self, configs: List[Dict[str, Any]]) -> List[Tuple[str, List]]:
+        """构建特征处理管道
         
-        for pipeline in pipelines_config:
-            feature_name, processors = self._build_single_pipeline(pipeline)
+        从配置文件中读取特征信息，为每个特征创建对应的处理器序列
+        
+        Args:
+            configs: 特征配置列表，来自feat.yml
             
-            # 只有当输入特征有效且处理器不为空时，才添加到管道中
+        Returns:
+            特征处理管道列表 [(特征名, [处理器列表])]
+        """
+        pipelines = []
+        
+        for config in configs:
+            feature_name, processors = self._build_single_pipeline(config)
             if feature_name and processors:
-                feature_pipelines.append((feature_name, processors))
+                pipelines.append((feature_name, processors))
         
-        return feature_pipelines
+        if self.verbose:
+            self._log_pipeline_summary(pipelines)
+        
+        return pipelines
     
-    def _build_single_pipeline(self, pipeline: Dict[str, Any]) -> Tuple[Optional[str], List]:
-        """
-        构建单个特征管道
+    def _build_single_pipeline(self, config: Dict[str, Any]) -> Tuple[Optional[str], List]:
+        """构建单个特征的处理管道
         
-        参数:
-            pipeline: 单个管道配置
+        解析单个特征配置，创建对应的处理器序列
+        
+        Args:
+            config: 单个特征的配置信息
             
-        返回:
-            feature_name: 特征名称
-            processors: 处理器列表
+        Returns:
+            (特征名, 处理器列表)
         """
-        # 从配置中获取输入特征名
-        feature_name = None
-        if 'operations' in pipeline and pipeline['operations']:
-            first_op = pipeline['operations'][0]
-            if 'col_in' in first_op:
-                feature_name = first_op['col_in']
+        feature_name = config.get('feat_name')
+        feat_type = config.get('feat_type')
         
-        processors = []
+        if not feature_name or not feat_type:
+            if self.verbose:
+                print(f"WARNING: 跳过无效配置: {config}")
+            return None, []
         
-        # 构建处理管道
-        for operation in pipeline.get('operations', []):
-            processor = self._create_processor(operation, pipeline)
-            if processor:
-                processors.append(processor)
-        
+        processors = self._create_processors(config)
         return feature_name, processors
     
-    def _create_processor(self, operation: Dict[str, Any], pipeline: Dict[str, Any]) -> Optional[tf.keras.layers.Layer]:
-        """
-        创建单个处理器
+    def _create_processors(self, config: Dict[str, Any]) -> List[tf.keras.layers.Layer]:
+        """根据特征类型创建对应的处理器
         
-        参数:
-            operation: 操作配置
-            pipeline: 管道配置
+        根据特征类型(sparse/varlen_sparse/dense)创建不同的处理器序列:
+        - sparse: 只需要Embedding层
+        - varlen_sparse: 需要Embedding层 + 池化层
+        - dense: 使用Lambda层直接传递
+        
+        Args:
+            config: 特征配置信息
             
-        返回:
-            processor: 处理器实例，如果创建失败则返回None
+        Returns:
+            处理器列表
         """
-        # 提取操作参数
-        func_name = operation['func_name']
-        func_parameters = operation.get('func_parameters', {})
+        feat_name = config['feat_name']
+        feat_type = config['feat_type']
+        vocab_size = config.get('vocabulary_size', 1000)
+        embed_dim = config.get('embedding_dim', 8)
         
-        # 决定使用哪个处理器字典
-        processor_dict = self._select_processor_dict(pipeline)
+        if feat_type == 'sparse':
+            return [self._create_embedding(feat_name, vocab_size, embed_dim, sparse=True)]
         
-        # 添加安全检查
-        if func_name not in processor_dict:
-            print(
-                f"警告：找不到处理器 {func_name}，"
-                f"可用处理器: {list(processor_dict.keys())}"
-            )
-            return None
+        elif feat_type == 'varlen_sparse':
+            embedding = self._create_embedding(feat_name, vocab_size, embed_dim, sparse=False)
+            pooling = self._create_pooling(feat_name)
+            return [embedding, pooling]
         
-        # 如果是数值操作但输入可能是字符串，需要先添加转换层
-        if func_name in ['Normalized', 'MinMaxScaler']:
-            return tf.keras.layers.Lambda(
-                lambda x: tf.strings.to_number(x, out_type=tf.float32),
-                name=f"str_to_number_{operation.get('col_in', 'unknown')}"
-            )
+        elif feat_type == 'dense':
+            return [self._create_dense_processor(feat_name)]
         
-        # 特殊处理需要使用config参数的处理器
-        if func_name == 'SplitEmbedding':
-            return self._create_split_embedding_processor(func_parameters)
-        elif func_name == 'EntityOnlyEmbedding':
-            return self._create_entity_only_embedding_processor(func_parameters)
-        elif func_name == 'BertEmbedding':
-            return self._create_bert_embedding_processor(func_parameters)
-        elif func_name == 'PrecomputedEmbedding':
-            return self._create_precomputed_embedding_processor(func_parameters)
-        
-        # 创建处理器实例
-        return processor_dict[func_name](**func_parameters)
-    
-    def _create_split_embedding_processor(self, parameters: Dict[str, Any]) -> tf.keras.layers.Layer:
-        """
-        创建SplitEmbedding处理器，将旧格式参数转换为config格式
-        
-        参数:
-            parameters: 操作参数
-            
-        返回:
-            processor: SplitEmbedding处理器实例
-        """
-        # 获取处理器类
-        SplitEmbedding = self.single_processor_dict['SplitEmbedding']
-        
-        # 将参数转换为config字典格式
-        config = {}
-        for key, value in parameters.items():
-            config[key] = value
-        
-        # 创建并返回处理器
-        return SplitEmbedding(config=config)
-    
-    def _create_entity_only_embedding_processor(self, parameters: Dict[str, Any]) -> tf.keras.layers.Layer:
-        """
-        创建EntityOnlyEmbedding处理器，将参数转换为config格式
-        
-        参数:
-            parameters: 操作参数
-            
-        返回:
-            processor: EntityOnlyEmbedding处理器实例
-        """
-        # 获取处理器类
-        EntityOnlyEmbedding = self.single_processor_dict['EntityOnlyEmbedding']
-        
-        # 将参数转换为config字典格式
-        config = {}
-        for key, value in parameters.items():
-            config[key] = value
-        
-        # 创建并返回处理器
-        return EntityOnlyEmbedding(config=config)
-    
-    def _create_bert_embedding_processor(self, parameters: Dict[str, Any]) -> tf.keras.layers.Layer:
-        """
-        创建BertEmbedding处理器，将参数转换为config格式
-        
-        参数:
-            parameters: 操作参数
-            
-        返回:
-            processor: BertEmbedding处理器实例
-        """
-        # 获取处理器类
-        BertEmbedding = self.single_processor_dict['BertEmbedding']
-        
-        # 将参数转换为config字典格式
-        config = {}
-        for key, value in parameters.items():
-            config[key] = value
-        
-        # 创建并返回处理器
-        return BertEmbedding(config=config)
-    
-    def _create_precomputed_embedding_processor(self, parameters: Dict[str, Any]) -> tf.keras.layers.Layer:
-        """
-        创建PrecomputedEmbedding处理器，将参数转换为config格式
-        
-        参数:
-            parameters: 操作参数
-            
-        返回:
-            processor: PrecomputedEmbedding处理器实例
-        """
-        # 获取处理器类
-        PrecomputedEmbedding = self.single_processor_dict['PrecomputedEmbedding']
-        
-        # 将参数转换为config字典格式
-        config = {}
-        for key, value in parameters.items():
-            config[key] = value
-        
-        # 创建并返回处理器
-        return PrecomputedEmbedding(config=config)
-    
-    def _select_processor_dict(self, pipeline: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        选择适当的处理器字典
-        
-        参数:
-            pipeline: 管道配置
-            
-        返回:
-            processor_dict: 处理器字典
-        """
-        if pipeline['feat_type'] in ['SingleFeature', 'SparseFeature']:
-            return self.single_processor_dict
         else:
-            return self.cross_processor_dict
+            if self.verbose:
+                print(f"WARNING: 不支持的特征类型: {feat_type} for {feat_name}")
+            return []
+    
+    def _create_embedding(self, name: str, vocab_size: int, embed_dim: int, 
+                         sparse: bool = True) -> tf.keras.layers.Embedding:
+        """创建Embedding层
+        
+        为特征创建TensorFlow Embedding层，将哈希整数转换为密集向量
+        
+        Args:
+            name: 特征名称
+            vocab_size: 词汇表大小
+            embed_dim: 嵌入维度
+            sparse: 是否为稀疏特征(影响是否启用masking)
+            
+        Returns:
+            TensorFlow Embedding层
+        """
+        embedding = tf.keras.layers.Embedding(
+            input_dim=vocab_size,
+            output_dim=embed_dim,
+            name=f'{name}_embedding',
+            mask_zero=not sparse,  # 变长特征需要masking padding值
+            embeddings_initializer='uniform'
+        )
+        
+        self.embedding_layers[name] = embedding
+        
+        if self.verbose:
+            mask_info = "无mask" if sparse else "有mask"
+            print(f"CREATED: {name}: Embedding({vocab_size}, {embed_dim}) {mask_info}")
+        
+        return embedding
+    
+    def _create_pooling(self, name: str, pooling_type: str = 'mean') -> tf.keras.layers.Layer:
+        """创建池化层
+        
+        为变长特征创建池化层，将变长序列聚合为固定长度向量
+        支持的池化类型: mean(平均), max(最大), sum(求和)
+        
+        Args:
+            name: 特征名称
+            pooling_type: 池化类型
+            
+        Returns:
+            池化层
+        """
+        pooling_map = {
+            'mean': tf.keras.layers.GlobalAveragePooling1D,
+            'max': tf.keras.layers.GlobalMaxPooling1D,
+            'sum': lambda: tf.keras.layers.Lambda(
+                lambda x: tf.reduce_sum(x, axis=1), name=f'{name}_sum_pooling'
+            )
+        }
+        
+        pooling_cls = pooling_map.get(pooling_type, pooling_map['mean'])
+        pooling = pooling_cls(name=f'{name}_{pooling_type}_pooling')
+        
+        self.pooling_layers[name] = pooling
+        
+        if self.verbose:
+            print(f"CREATED: {name}: {pooling_type.title()}Pooling")
+        
+        return pooling
+    
+    def _create_dense_processor(self, name: str) -> tf.keras.layers.Layer:
+        """创建密集特征处理器
+        
+        为密集特征创建处理器，当前实现为直通(identity)函数
+        可根据需要扩展为标准化、归一化等操作
+        
+        Args:
+            name: 特征名称
+            
+        Returns:
+            处理器层
+        """
+        processor = tf.keras.layers.Lambda(
+            lambda x: x, name=f'{name}_dense_processor'
+        )
+        
+        if self.verbose:
+            print(f"CREATED: {name}: Dense处理器")
+        
+        return processor
+    
+    def _log_pipeline_summary(self, pipelines: List[Tuple[str, List]]):
+        """打印管道构建摘要
+        
+        输出所有成功构建的特征管道信息
+        
+        Args:
+            pipelines: 构建完成的管道列表
+        """
+        print(f"\nSUCCESS: 成功构建 {len(pipelines)} 个特征管道:")
+        for feature_name, processors in pipelines:
+            processor_names = [p.__class__.__name__ for p in processors]
+            print(f"   {feature_name}: {' -> '.join(processor_names)}")
 
 
 def process_feature_batch(features: Dict[str, tf.Tensor], 
-                         feature_pipelines: List[Tuple[str, List]]) -> List[tf.Tensor]:
-    """
-    处理一批特征
+                         pipelines: List[Tuple[str, List]], 
+                         verbose: bool = True) -> List[tf.Tensor]:
+    """处理一批特征数据
     
-    参数:
-        features: 特征字典
-        feature_pipelines: 特征处理管道列表
+    将输入的哈希整数特征转换为embedding向量
+    这是特征处理的核心函数，负责协调所有特征的处理
+    
+    Args:
+        features: 特征字典，包含哈希整数数据
+                 格式: {'feature_name': tensor_data}
+        pipelines: 特征处理管道列表
+        verbose: 是否输出详细日志
         
-    返回:
-        outputs: 处理后的特征输出列表
+    Returns:
+        处理后的embedding向量列表
     """
     outputs = []
-    used_features = []
+    processed_features = []
     
-    # 对每个特征管道应用处理
-    for feature_name, processors in feature_pipelines:
-        # 检查特征是否存在
-        if feature_name in features:
+    if verbose:
+        print(f"\nPROCESSING: 开始处理 {len(features)} 个输入特征")
+    
+    for feature_name, processors in pipelines:
+        if feature_name not in features:
+            if verbose:
+                print(f"WARNING: 特征 {feature_name} 不在输入中")
+            continue
+        
+        try:
             # 处理单个特征
-            feature_output = process_single_feature(
-                features[feature_name], 
-                processors
+            feature_output = _process_single_feature(
+                features[feature_name], processors, feature_name, verbose
             )
             
-            # 记录使用的特征并添加到输出
-            used_features.append(feature_name)
             outputs.append(feature_output)
+            processed_features.append(feature_name)
+            
+        except Exception as e:
+            if verbose:
+                print(f"ERROR: 处理特征 {feature_name} 失败: {e}")
+            continue
+    
+    if verbose:
+        print(f"SUCCESS: 成功处理 {len(outputs)} 个特征: {processed_features}")
     
     return outputs
 
 
-def process_single_feature(feature_input: tf.Tensor, 
-                          processors: List[tf.keras.layers.Layer]) -> tf.Tensor:
-    """
-    处理单个特征
+def _process_single_feature(feature_input: tf.Tensor, 
+                           processors: List[tf.keras.layers.Layer],
+                           feature_name: str = "unknown",
+                           verbose: bool = True) -> tf.Tensor:
+    """处理单个特征
     
-    参数:
-        feature_input: 特征输入张量
-        processors: 处理器列表
+    对单个特征应用处理器序列，实现哈希整数到embedding向量的转换
+    
+    Args:
+        feature_input: 特征输入张量(哈希整数)
+        processors: 处理器序列
+        feature_name: 特征名称(用于日志)
+        verbose: 是否输出详细日志
         
-    返回:
-        processed_feature: 处理后的特征
+    Returns:
+        处理后的特征张量(embedding向量)
     """
     processed = feature_input
     
-    # 逐层应用处理
+    if verbose:
+        print(f"   PROCESSING: {feature_name}: {processed.shape}", end="")
+    
     for processor in processors:
         processed = processor(processed)
+        if verbose:
+            print(f" -> {processed.shape}", end="")
     
-    return processed 
+    if verbose:
+        print()  # 换行
+    
+    return processed
+
+
+def create_sample_data(batch_size: int = 2) -> Dict[str, tf.Tensor]:
+    """创建测试用的示例数据
+    
+    生成模拟的UniProcess输出数据，用于测试特征处理管道
+    
+    Args:
+        batch_size: 批次大小
+        
+    Returns:
+        示例特征数据字典
+    """
+    return {
+        # 稀疏特征: 单个哈希整数
+        'country_hash': tf.constant([156, 89] * (batch_size // 2 + 1))[:batch_size],
+        'push_title_hash': tf.constant([3, 7] * (batch_size // 2 + 1))[:batch_size],
+        
+        # 变长稀疏特征: 哈希整数列表(已padding)
+        'user_watch_stk_code_hash': tf.constant([
+            [456, 789, 234, 0, 0],
+            [123, 456, 0, 0, 0]
+        ] * (batch_size // 2 + 1))[:batch_size],
+        
+        'tag_id_hash': tf.constant([
+            [11, 22, 0],
+            [33, 44, 55]
+        ] * (batch_size // 2 + 1))[:batch_size]
+    }
+
+
+def create_sample_config() -> List[Dict[str, Any]]:
+    """创建测试用的示例配置
+    
+    生成模拟的feat.yml配置，用于测试特征处理管道
+    
+    Returns:
+        示例配置列表
+    """
+    return [
+        {
+            'feat_name': 'country_hash',
+            'feat_type': 'sparse',
+            'vocabulary_size': 200,
+            'embedding_dim': 8
+        },
+        {
+            'feat_name': 'user_watch_stk_code_hash',
+            'feat_type': 'varlen_sparse',
+            'vocabulary_size': 1000,
+            'embedding_dim': 8
+        }
+    ]
+
+
+def test_pipeline():
+    """测试特征处理管道
+    
+    完整的测试流程，验证特征处理管道的正确性
+    """
+    print("TEST: 测试特征处理管道")
+    
+    # 创建配置和数据
+    config = create_sample_config()
+    sample_data = create_sample_data()
+    
+    # 构建管道
+    builder = FeaturePipelineBuilder(verbose=True)
+    pipelines = builder.build_feature_pipelines(config)
+    
+    # 处理特征
+    outputs = process_feature_batch(sample_data, pipelines, verbose=True)
+    
+    print(f"\nRESULT: 最终结果: {len(outputs)} 个embedding向量")
+    for i, output in enumerate(outputs):
+        print(f"   输出 {i+1}: {output.shape}")
+    
+    return outputs
+
+
+if __name__ == "__main__":
+    test_pipeline() 

@@ -22,7 +22,29 @@ if PROJECT_ROOT not in sys.path:
 if ENV_DIR not in sys.path:
     sys.path.insert(0, ENV_DIR)
 
-from light_ctr.utils.constants import TF_DTYPE_MAPPING # type: ignore
+# TensorFlow数据类型映射(去掉light_ctr依赖)
+TF_DTYPE_MAPPING = {
+    "float16": tf.float16,
+    "float32": tf.float32,
+    "float64": tf.float64,
+    "int8": tf.int8,
+    "int16": tf.int16,
+    "int32": tf.int32,
+    "int64": tf.int64,
+    "uint8": tf.uint8,
+    "uint16": tf.uint16,
+    "uint32": tf.uint32,
+    "uint64": tf.uint64,
+    "bool": tf.bool,
+    "string": tf.string,
+    "complex64": tf.complex64,
+    "complex128": tf.complex128,
+    "qint8": tf.qint8,
+    "qint16": tf.qint16,
+    "qint32": tf.qint32,
+    "quint8": tf.quint8,
+    "quint16": tf.quint16,
+}
 
 # 导入所需的工具函数
 from src.utils.environment_utils import setup_environment
@@ -35,6 +57,7 @@ from src.utils.gpu_utils import setup_gpu
 from src.models.model_utils import create_and_compile_model, test_model_on_batch
 # 从深度模型包导入MLP模型
 from src.models.deep import MLP
+from src.data.feature_preprocessor import apply_feature_preprocessing
 
 
 def set_random_seeds(seed: int = 42) -> None:
@@ -162,15 +185,107 @@ def prepare_dataset_from_config(
         train_config: 训练配置
         
     返回:
-        full_dataset: 完整数据集
-        train_dataset: 训练数据集
-        validation_dataset: 验证数据集
-        column_names: 列名列表
+        processed_full_dataset: 处理后的完整数据集
+        processed_train_dataset: 处理后的训练数据集  
+        processed_validation_dataset: 处理后的验证数据集
+        column_names: 原始列名列表
         input_signature: 输入签名
     """
-    return prepare_datasets(
+    print("\n" + "="*50)
+    print("开始数据集准备和特征处理")
+    print("="*50)
+    
+    # 1. 加载原始数据集
+    print("\n📂 步骤1: 加载原始CSV数据...")
+    full_dataset, train_dataset, validation_dataset, column_names, input_signature = prepare_datasets(
         data_config, train_config, TF_DTYPE_MAPPING
     )
+    
+    print(f"✅ 原始数据加载完成")
+    print(f"   原始特征列: {column_names}")
+    
+    # 2. 应用特征处理
+    print("\n🔧 步骤2: 应用UniProcess特征处理...")
+    try:
+        # 处理完整数据集
+        print("   处理完整数据集...")
+        processed_full_dataset = apply_feature_preprocessing(
+            full_dataset, 
+            feat_config_path="config/feat.yml",
+            verbose=True
+        )
+        
+        # 处理训练数据集
+        print("   处理训练数据集...")
+        processed_train_dataset = apply_feature_preprocessing(
+            train_dataset,
+            feat_config_path="config/feat.yml", 
+            verbose=False  # 避免重复日志
+        )
+        
+        # 处理验证数据集
+        print("   处理验证数据集...")
+        processed_validation_dataset = apply_feature_preprocessing(
+            validation_dataset,
+            feat_config_path="config/feat.yml",
+            verbose=False  # 避免重复日志
+        )
+        
+        print("✅ 特征处理完成")
+        
+        # 3. 验证处理后的数据集
+        print("\n🔍 步骤3: 验证处理后的数据集...")
+        _validate_processed_datasets(
+            processed_full_dataset, 
+            processed_train_dataset, 
+            processed_validation_dataset
+        )
+        
+        return (processed_full_dataset, processed_train_dataset, 
+                processed_validation_dataset, column_names, input_signature)
+        
+    except Exception as e:
+        print(f"❌ 特征处理失败: {e}")
+        print("🔄 回退到原始数据集...")
+        return full_dataset, train_dataset, validation_dataset, column_names, input_signature
+
+
+def _validate_processed_datasets(full_dataset: tf.data.Dataset,
+                                train_dataset: tf.data.Dataset, 
+                                validation_dataset: tf.data.Dataset) -> None:
+    """验证处理后的数据集
+    
+    Args:
+        full_dataset: 处理后的完整数据集
+        train_dataset: 处理后的训练数据集
+        validation_dataset: 处理后的验证数据集
+    """
+    try:
+        # 检查处理后的特征名称和数据类型
+        for batch_features, batch_labels in full_dataset.take(1):
+            print(f"   处理后特征数量: {len(batch_features)}")
+            print(f"   特征名称: {list(batch_features.keys())}")
+            
+            # 检查前几个特征的数据类型和样例
+            feature_sample = {}
+            for i, (name, tensor) in enumerate(batch_features.items()):
+                if i < 3:  # 只显示前3个特征的详细信息
+                    feature_sample[name] = {
+                        'shape': tensor.shape,
+                        'dtype': tensor.dtype,
+                        'sample_values': tensor.numpy()[:3] if tensor.shape[0] > 0 else 'empty'
+                    }
+                    print(f"   特征 '{name}': shape={tensor.shape}, dtype={tensor.dtype}")
+            
+            # 检查标签
+            print(f"   标签shape: {batch_labels.shape}, dtype: {batch_labels.dtype}")
+            
+            break
+            
+        print("✅ 数据集验证通过")
+        
+    except Exception as e:
+        print(f"⚠️  数据集验证警告: {e}")
 
 
 def train_and_evaluate_model(
@@ -250,6 +365,15 @@ def print_training_results(history: tf.keras.callbacks.History) -> None:
         print(f"警告: 可能存在过拟合现象 (训练AUC - 验证AUC = {auc_diff:.4f})")
 
 
+def setup_environment_for_training() -> None:
+    """设置训练环境"""
+    setup_gpu()
+    setup_environment()
+    setup_directories()
+    set_random_seeds()
+    print("训练环境设置完成")
+
+
 def main() -> None:
     """主函数，执行训练流程"""
     # 1. 环境设置
@@ -268,15 +392,6 @@ def main() -> None:
     )
     
     print("\n训练流程完成")
-
-
-def setup_environment_for_training() -> None:
-    """设置训练环境"""
-    setup_gpu()
-    setup_environment()
-    setup_directories()
-    set_random_seeds()
-    print("训练环境设置完成")
 
 
 if __name__ == "__main__":
