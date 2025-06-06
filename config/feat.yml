@@ -1,317 +1,323 @@
+exclude_features:
+  current: exclude_user_propernoun
+  default: []
+  exclude_user_behavior:
+  - user_watch_stk_code
+  - prefer_bid_code
+  - hold_bid_code
+  - user_propernoun
+  exclude_user_propernoun:
+  - user_propernoun
+
+
 pipelines:
-  - feat_name: hour
-    feat_type: sparse
-    vocabulary_size: 24
-    embedding_dim: 8
-    input_sample: "2024-08-02 00:44:05"
-    operations:
-      - col_in: create_time
-        col_out: create_time
-        func_name: fillna
-        func_parameters:
-          na_value: "2024-08-02 00:16:34"
-      - col_in: create_time
-        col_out: hour
-        func_name: to_hour
-        func_parameters: {}
-
-  - feat_name: weekday
-    feat_type: sparse
-    vocabulary_size: 7
-    embedding_dim: 8
-    input_sample: "2024-08-02 00:44:05"
-    operations:
-      - col_in: create_time
-        col_out: weekday
-        func_name: to_weekday
-        func_parameters: {}
-
-  - feat_name: user_watch_stk_code_hash
-    feat_type: varlen_sparse
-    vocabulary_size: 10000
-    embedding_dim: 8
-    input_sample: AAPL_185 & TSLA_185
-    operations:
-      - col_in: watchlists
-        col_out: watchlists
-        func_name: fillna
-        func_parameters:
-          na_value: "null_0 & null_0"
-      - col_in: watchlists
-        col_out: watchlists
-        func_name: split
-        func_parameters:
-          sep: " & "
-      - col_in: watchlists
-        col_out: watchlists
-        func_name: seperation
-        func_parameters:
-          sep: "_"
-      - col_in: watchlists
-        col_out: user_watch_stk_code
-        func_name: list_get
-        func_parameters:
-          item_index: 0
-      - col_in: user_watch_stk_code
-        col_out: user_watch_stk_code
-        func_name: remove_items
-        func_parameters:
-          target_values: ["AAPL", "AMZN", "GOOGL", "TSLA"]
-      - col_in: user_watch_stk_code
-        col_out: user_watch_stk_code
-        func_name: padding
-        func_parameters:
-          max_len: 5
-          pad_value: "null"
-      - col_in: user_watch_stk_code
-        col_out: user_watch_stk_code_hash
-        func_name: list_hash
-        func_parameters:
-          vocabulary_size: 10000
-
-  - feat_name: country_hash
-    feat_type: sparse
-    vocabulary_size: 200
-    embedding_dim: 8
-    input_sample: United States
-    operations:
-      - col_in: country
-        col_out: country
-        func_name: fillna
-        func_parameters:
-          na_value: "null"
-      - col_in: country
-        col_out: country_hash
-        func_name: str_hash
-        func_parameters:
-          vocabulary_size: 200
-
-  - feat_name: prefer_bid_code_hash
-    feat_type: varlen_sparse
-    vocabulary_size: 10000
-    embedding_dim: 8
-    input_sample: AAPL#0.24809|AMZN#0.24809|GOOGL#0.24809|TSLA#0.24809
-    operations:
-      - col_in: prefer_bid
-        col_out: prefer_bid
-        func_name: fillna
-        func_parameters:
-          na_value: "null#0"
-      - col_in: prefer_bid
-        col_out: prefer_bid
-        func_name: split
-        func_parameters:
-          sep: "|"
-      - col_in: prefer_bid
-        col_out: prefer_bid
-        func_name: seperation
-        func_parameters:
-          sep: "#"
-      - col_in: prefer_bid
-        col_out: prefer_bid_code
-        func_name: list_get
-        func_parameters:
-          item_index: 0
-      - col_in: prefer_bid_code
-        col_out: prefer_bid_code
-        func_name: padding
-        func_parameters:
-          max_len: 5
-          pad_value: "null"
-      - col_in: prefer_bid_code
-        col_out: prefer_bid_code_hash
-        func_name: list_hash
-        func_parameters:
-          vocabulary_size: 10000
-
-  - feat_name: hold_bid_code_hash
-    feat_type: varlen_sparse
-    vocabulary_size: 10000
-    embedding_dim: 8
-    input_sample: JD,185|BAC,169|TSLA,185
-    operations:
-      - col_in: holdings
-        col_out: holdings
-        func_name: fillna
-        func_parameters:
-          na_value: "null,0"
-      - col_in: holdings
-        col_out: holdings
-        func_name: split
-        func_parameters:
-          sep: "|"
-      - col_in: holdings
-        col_out: holdings
-        func_name: seperation
-        func_parameters:
-          sep: ","
-      - col_in: holdings
-        col_out: hold_bid_code
-        func_name: list_get
-        func_parameters:
-          item_index: 0
-      - col_in: hold_bid_code
-        col_out: hold_bid_code
-        func_name: padding
-        func_parameters:
-          max_len: 5
-          pad_value: "null"
-      - col_in: hold_bid_code
-        col_out: hold_bid_code_hash
-        func_name: list_hash
-        func_parameters:
-          vocabulary_size: 10000
-
-  - feat_name: user_propernoun_hash
-    feat_type: varlen_sparse
-    vocabulary_size: 10000
-    embedding_dim: 8
-    input_sample: "apple#1.02|nike#1.02"
-    operations:
-      - col_in: user_propernoun
-        col_out: user_propernoun
-        func_name: fillna
-        func_parameters:
-          na_value: "null#0"
-      - col_in: user_propernoun
-        col_out: user_propernoun
-        func_name: split
-        func_parameters:
-          sep: "|"
-      - col_in: user_propernoun
-        col_out: user_propernoun
-        func_name: seperation
-        func_parameters:
-          sep: "#"
-      - col_in: user_propernoun
-        col_out: user_propernoun_code
-        func_name: list_get
-        func_parameters:
-          item_index: 0
-      - col_in: user_propernoun_code
-        col_out: user_propernoun_code
-        func_name: padding
-        func_parameters:
-          max_len: 5
-          pad_value: "null"
-      - col_in: user_propernoun_code
-        col_out: user_propernoun_hash
-        func_name: list_hash
-        func_parameters:
-          vocabulary_size: 10000
-
-  - feat_name: push_title_hash
-    feat_type: sparse
-    vocabulary_size: 8
-    embedding_dim: 8
-    input_sample: Breaking News
-    operations:
-      - col_in: push_title
-        col_out: push_title
-        func_name: fillna
-        func_parameters:
-          na_value: "null"
-      - col_in: push_title
-        col_out: push_title_hash
-        func_name: str_hash
-        func_parameters:
-          vocabulary_size: 8
-
-  - feat_name: title_len
-    feat_type: sparse
-    vocabulary_size: 32
-    embedding_dim: 8
-    input_sample: "Hong Kong's Leading Broker Futu Securities Introduces Bitcoin and XRP Trading with Lucrative Incentives"
-    operations:
-      - col_in: push_content
-        col_out: push_content
-        func_name: fillna
-        func_parameters:
-          na_value: "null"
-      - col_in: push_content
-        col_out: push_content
-        func_name: split
-        func_parameters:
-          sep: " "
-      - col_in: push_content
-        col_out: title_len
-        func_name: list_len
-        func_parameters: {}
-      - col_in: title_len
-        col_out: title_len
-        func_name: int_max
-        func_parameters:
-          max_value: 31
-
-  - feat_name: item_code_hash
-    feat_type: varlen_sparse
-    vocabulary_size: 10000
-    embedding_dim: 8
-    input_sample: '[{"market":"185","score":1,"code":"META","name":"Meta","type":0,"parentId":"0339437d07195361"}]'
-    operations:
-      - col_in: item_code
-        col_out: item_code
-        func_name: fillna
-        func_parameters:
-          na_value: '[{"market":"null","score":0,"code":"null","name":"null","type":"null","parentId":"null"}]'
-      - col_in: item_code
-        col_out: item_code
-        func_name: json_object_to_list
-        func_parameters:
-          key: "code"
-      - col_in: item_code
-        col_out: item_code
-        func_name: padding
-        func_parameters:
-          max_len: 5
-          pad_value: "null"
-      - col_in: item_code
-        col_out: item_code_hash
-        func_name: list_hash
-        func_parameters:
-          vocabulary_size: 10000
-
-  - feat_name: submit_type_hash
-    feat_type: sparse
-    vocabulary_size: 10
-    embedding_dim: 8
-    input_sample: "auto_flash"
-    operations:
-      - col_in: submit_type
-        col_out: submit_type
-        func_name: fillna
-        func_parameters:
-          na_value: "null"
-      - col_in: submit_type
-        col_out: submit_type_hash
-        func_name: str_hash
-        func_parameters:
-          vocabulary_size: 10
-
-  - feat_name: tag_id_hash
-    feat_type: varlen_sparse
-    vocabulary_size: 10000
-    embedding_dim: 8
-    input_sample: '[{"score":0,"tagId":"57967","name":"Fusion","type":4,"parentId":"0339437d07195361"}]'
-    operations:
-      - col_in: item_tags
-        col_out: item_tags
-        func_name: fillna
-        func_parameters:
-          na_value: '[{"score":0,"tagId":"null","name":"null","type":0,"parentId":"null"}]'
-      - col_in: item_tags
-        col_out: tagIds
-        func_name: json_object_to_list
-        func_parameters:
-          key: "tagId"
-      - col_in: tagIds
-        col_out: tagIds
-        func_name: padding
-        func_parameters:
-          max_len: 3
-          pad_value: "null"
-      - col_in: tagIds
-        col_out: tag_id_hash
-        func_name: list_hash
-        func_parameters:
-          vocabulary_size: 10000
+- embedding_dim: 8
+  feat_name: hour
+  feat_type: sparse
+  input_sample: '2024-08-02 00:44:05'
+  operations:
+  - col_in: create_time
+    col_out: create_time
+    func_name: fillna
+    func_parameters:
+      na_value: '2024-08-02 00:16:34'
+  - col_in: create_time
+    col_out: hour
+    func_name: to_hour
+    func_parameters: {}
+  vocabulary_size: 24
+- embedding_dim: 8
+  feat_name: weekday
+  feat_type: sparse
+  input_sample: '2024-08-02 00:44:05'
+  operations:
+  - col_in: create_time
+    col_out: weekday
+    func_name: to_weekday
+    func_parameters: {}
+  vocabulary_size: 7
+- embedding_dim: 8
+  feat_name: user_watch_stk_code_hash
+  feat_type: varlen_sparse
+  input_sample: AAPL_185 & TSLA_185
+  operations:
+  - col_in: watchlists
+    col_out: watchlists
+    func_name: fillna
+    func_parameters:
+      na_value: null_0 & null_0
+  - col_in: watchlists
+    col_out: watchlists
+    func_name: split
+    func_parameters:
+      sep: ' & '
+  - col_in: watchlists
+    col_out: watchlists
+    func_name: seperation
+    func_parameters:
+      sep: _
+  - col_in: watchlists
+    col_out: user_watch_stk_code
+    func_name: list_get
+    func_parameters:
+      item_index: 0
+  - col_in: user_watch_stk_code
+    col_out: user_watch_stk_code
+    func_name: remove_items
+    func_parameters:
+      target_values:
+      - AAPL
+      - AMZN
+      - GOOGL
+      - TSLA
+  - col_in: user_watch_stk_code
+    col_out: user_watch_stk_code
+    func_name: padding
+    func_parameters:
+      max_len: 5
+      pad_value: 'null'
+  - col_in: user_watch_stk_code
+    col_out: user_watch_stk_code_hash
+    func_name: list_hash
+    func_parameters:
+      vocabulary_size: 10000
+  vocabulary_size: 10000
+- embedding_dim: 8
+  feat_name: country_hash
+  feat_type: sparse
+  input_sample: United States
+  operations:
+  - col_in: country
+    col_out: country
+    func_name: fillna
+    func_parameters:
+      na_value: 'null'
+  - col_in: country
+    col_out: country_hash
+    func_name: str_hash
+    func_parameters:
+      vocabulary_size: 200
+  vocabulary_size: 200
+- embedding_dim: 8
+  feat_name: prefer_bid_code_hash
+  feat_type: varlen_sparse
+  input_sample: AAPL#0.24809|AMZN#0.24809|GOOGL#0.24809|TSLA#0.24809
+  operations:
+  - col_in: prefer_bid
+    col_out: prefer_bid
+    func_name: fillna
+    func_parameters:
+      na_value: null#0
+  - col_in: prefer_bid
+    col_out: prefer_bid
+    func_name: split
+    func_parameters:
+      sep: '|'
+  - col_in: prefer_bid
+    col_out: prefer_bid
+    func_name: seperation
+    func_parameters:
+      sep: '#'
+  - col_in: prefer_bid
+    col_out: prefer_bid_code
+    func_name: list_get
+    func_parameters:
+      item_index: 0
+  - col_in: prefer_bid_code
+    col_out: prefer_bid_code
+    func_name: padding
+    func_parameters:
+      max_len: 5
+      pad_value: 'null'
+  - col_in: prefer_bid_code
+    col_out: prefer_bid_code_hash
+    func_name: list_hash
+    func_parameters:
+      vocabulary_size: 10000
+  vocabulary_size: 10000
+- embedding_dim: 8
+  feat_name: hold_bid_code_hash
+  feat_type: varlen_sparse
+  input_sample: JD,185|BAC,169|TSLA,185
+  operations:
+  - col_in: holdings
+    col_out: holdings
+    func_name: fillna
+    func_parameters:
+      na_value: null,0
+  - col_in: holdings
+    col_out: holdings
+    func_name: split
+    func_parameters:
+      sep: '|'
+  - col_in: holdings
+    col_out: holdings
+    func_name: seperation
+    func_parameters:
+      sep: ','
+  - col_in: holdings
+    col_out: hold_bid_code
+    func_name: list_get
+    func_parameters:
+      item_index: 0
+  - col_in: hold_bid_code
+    col_out: hold_bid_code
+    func_name: padding
+    func_parameters:
+      max_len: 5
+      pad_value: 'null'
+  - col_in: hold_bid_code
+    col_out: hold_bid_code_hash
+    func_name: list_hash
+    func_parameters:
+      vocabulary_size: 10000
+  vocabulary_size: 10000
+- embedding_dim: 8
+  feat_name: user_propernoun_hash
+  feat_type: varlen_sparse
+  input_sample: apple#1.02|nike#1.02
+  operations:
+  - col_in: user_propernoun
+    col_out: user_propernoun
+    func_name: fillna
+    func_parameters:
+      na_value: null#0
+  - col_in: user_propernoun
+    col_out: user_propernoun
+    func_name: split
+    func_parameters:
+      sep: '|'
+  - col_in: user_propernoun
+    col_out: user_propernoun
+    func_name: seperation
+    func_parameters:
+      sep: '#'
+  - col_in: user_propernoun
+    col_out: user_propernoun_code
+    func_name: list_get
+    func_parameters:
+      item_index: 0
+  - col_in: user_propernoun_code
+    col_out: user_propernoun_code
+    func_name: padding
+    func_parameters:
+      max_len: 5
+      pad_value: 'null'
+  - col_in: user_propernoun_code
+    col_out: user_propernoun_hash
+    func_name: list_hash
+    func_parameters:
+      vocabulary_size: 10000
+  vocabulary_size: 10000
+- embedding_dim: 8
+  feat_name: push_title_hash
+  feat_type: sparse
+  input_sample: Breaking News
+  operations:
+  - col_in: push_title
+    col_out: push_title
+    func_name: fillna
+    func_parameters:
+      na_value: 'null'
+  - col_in: push_title
+    col_out: push_title_hash
+    func_name: str_hash
+    func_parameters:
+      vocabulary_size: 8
+  vocabulary_size: 8
+- embedding_dim: 8
+  feat_name: title_len
+  feat_type: sparse
+  input_sample: Hong Kong's Leading Broker Futu Securities Introduces Bitcoin and
+    XRP Trading with Lucrative Incentives
+  operations:
+  - col_in: push_content
+    col_out: push_content
+    func_name: fillna
+    func_parameters:
+      na_value: 'null'
+  - col_in: push_content
+    col_out: push_content
+    func_name: split
+    func_parameters:
+      sep: ' '
+  - col_in: push_content
+    col_out: title_len
+    func_name: list_len
+    func_parameters: {}
+  - col_in: title_len
+    col_out: title_len
+    func_name: int_max
+    func_parameters:
+      max_value: 31
+  vocabulary_size: 32
+- embedding_dim: 8
+  feat_name: item_code_hash
+  feat_type: varlen_sparse
+  input_sample: '[{"market":"185","score":1,"code":"META","name":"Meta","type":0,"parentId":"0339437d07195361"}]'
+  operations:
+  - col_in: item_code
+    col_out: item_code
+    func_name: fillna
+    func_parameters:
+      na_value: '[{"market":"null","score":0,"code":"null","name":"null","type":"null","parentId":"null"}]'
+  - col_in: item_code
+    col_out: item_code
+    func_name: json_object_to_list
+    func_parameters:
+      key: code
+  - col_in: item_code
+    col_out: item_code
+    func_name: padding
+    func_parameters:
+      max_len: 5
+      pad_value: 'null'
+  - col_in: item_code
+    col_out: item_code_hash
+    func_name: list_hash
+    func_parameters:
+      vocabulary_size: 10000
+  vocabulary_size: 10000
+- embedding_dim: 8
+  feat_name: submit_type_hash
+  feat_type: sparse
+  input_sample: auto_flash
+  operations:
+  - col_in: submit_type
+    col_out: submit_type
+    func_name: fillna
+    func_parameters:
+      na_value: 'null'
+  - col_in: submit_type
+    col_out: submit_type_hash
+    func_name: str_hash
+    func_parameters:
+      vocabulary_size: 10
+  vocabulary_size: 10
+- embedding_dim: 8
+  feat_name: tag_id_hash
+  feat_type: varlen_sparse
+  input_sample: '[{"score":0,"tagId":"57967","name":"Fusion","type":4,"parentId":"0339437d07195361"}]'
+  operations:
+  - col_in: item_tags
+    col_out: item_tags
+    func_name: fillna
+    func_parameters:
+      na_value: '[{"score":0,"tagId":"null","name":"null","type":0,"parentId":"null"}]'
+  - col_in: item_tags
+    col_out: tagIds
+    func_name: json_object_to_list
+    func_parameters:
+      key: tagId
+  - col_in: tagIds
+    col_out: tagIds
+    func_name: padding
+    func_parameters:
+      max_len: 3
+      pad_value: 'null'
+  - col_in: tagIds
+    col_out: tag_id_hash
+    func_name: list_hash
+    func_parameters:
+      vocabulary_size: 10000
+  vocabulary_size: 10000

@@ -8,7 +8,7 @@
 from typing import Type, Dict, List, Any, Optional, Union, Tuple
 
 import tensorflow as tf
-from src.utils.config_loader import load_feature_config
+from src.utils.config_utils import load_feature_config
 
 
 def create_and_compile_model(
@@ -47,12 +47,11 @@ def _load_feature_pipelines_config() -> List[Dict[str, Any]]:
     Returns:
         特征管道配置列表
     """
-    # 排除不需要的特征
-    exclude_features = ['user_id']
-    print(f"\n=== 排除以下特征 ===\n{exclude_features}")
+    print(f"\n=== 从配置文件加载特征设置 ===")
     
-    # 加载配置
-    pipelines_config = load_feature_config(exclude_features=exclude_features)
+    # 从配置文件加载配置（使用当前配置，包含完整排除逻辑）
+    pipelines_config = load_feature_config()
+    
     return pipelines_config
 
 

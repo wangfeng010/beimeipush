@@ -157,3 +157,5 @@ py38env/
 models/best_model
 models/final_model
 models/push_binary_classification_model
+
+results/

@@ -17,7 +17,8 @@ from src.data.dataset_utils import build_dataset, split_dataset
 
 def prepare_datasets(data_config: Dict[str, Any], 
                      train_config: Dict[str, Any], 
-                     tf_dtype_mapping: Dict[str, Any]):
+                     tf_dtype_mapping: Dict[str, Any],
+                     filter_column: Optional[str] = None):
     """
     准备训练和验证数据集
     
@@ -25,6 +26,7 @@ def prepare_datasets(data_config: Dict[str, Any],
         data_config: 数据配置字典
         train_config: 训练配置字典
         tf_dtype_mapping: 数据类型映射字典
+        filter_column: 指定用于过滤的列名（只保留该列非空的数据）
     
     返回:
         full_dataset: 完整数据集
@@ -44,25 +46,32 @@ def prepare_datasets(data_config: Dict[str, Any],
     print(f"数据集列数: {len(column_names)}")
     print(f"标签列: {label_columns}")
     
-    # 4. 构建原始数据集
+    # 4. 显示过滤信息
+    if filter_column:
+        print(f"🔍 将对数据进行过滤，只保留 '{filter_column}' 列非空的数据")
+    else:
+        print("📊 使用全部数据进行训练")
+    
+    # 5. 构建原始数据集（添加过滤参数）
     dataset_with_userid, unique_user_ids, total_samples = build_dataset(
-        _get_file_pattern(data_config), column_names, column_defaults, data_config=data_config
+        _get_file_pattern(data_config), column_names, column_defaults, 
+        data_config=data_config, filter_column=filter_column
     )
     
-    # 5. 划分训练集和验证集
+    # 6. 划分训练集和验证集
     train_dataset, validation_dataset, val_users, train_users = _split_train_val_dataset(
         dataset_with_userid, unique_user_ids, train_config
     )
     
-    # 6. 配置批处理和预取
+    # 7. 配置批处理和预取
     train_dataset, validation_dataset, full_dataset = _configure_datasets(
         dataset_with_userid, train_dataset, validation_dataset, train_config
     )
     
-    # 7. 记录用户划分信息
-    log_user_split(train_users, val_users, unique_user_ids, total_samples)
+    # 8. 记录用户划分信息
+    log_user_split(train_users, val_users, unique_user_ids, total_samples, filter_column)
     
-    # 8. 确定输入签名
+    # 9. 确定输入签名
     input_signature = _determine_input_signature(full_dataset)
     
     return full_dataset, train_dataset, validation_dataset, column_names, input_signature
@@ -238,7 +247,7 @@ def _determine_input_signature(dataset: tf.data.Dataset) -> Optional[Dict[str, t
     return input_signature
 
 
-def log_user_split(train_users, val_users, unique_user_ids, total_samples):
+def log_user_split(train_users, val_users, unique_user_ids, total_samples, filter_column):
     """
     记录用户划分信息到日志文件
     
@@ -247,6 +256,7 @@ def log_user_split(train_users, val_users, unique_user_ids, total_samples):
         val_users: 验证集用户ID列表
         unique_user_ids: 所有唯一用户ID列表
         total_samples: 总样本数
+        filter_column: 过滤的列名
     """
     # 创建日志目录
     os.makedirs("./logs", exist_ok=True)
@@ -265,7 +275,8 @@ def log_user_split(train_users, val_users, unique_user_ids, total_samples):
         "total_users_count": len(unique_user_ids),
         "total_samples": total_samples,
         "train_ratio": train_ratio,
-        "val_ratio": val_ratio
+        "val_ratio": val_ratio,
+        "filter_column": filter_column
     }
     
     with open(user_split_log, 'w') as f:

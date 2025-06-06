@@ -20,7 +20,8 @@ def build_dataset(
     column_names: List[str], 
     column_defaults: List[Any], 
     batch_size: int = 256, 
-    data_config: Optional[Dict] = None
+    data_config: Optional[Dict] = None,
+    filter_column: Optional[str] = None
 ) -> Tuple[tf.data.Dataset, np.ndarray, int]:
     """
     构建数据集
@@ -31,6 +32,7 @@ def build_dataset(
         column_defaults: 每列的默认数据类型
         batch_size: 批处理大小
         data_config: 数据配置字典，包含CSV格式设置
+        filter_column: 指定用于过滤的列名（只保留该列非空的数据）
         
     Returns:
         dataset: TensorFlow 数据集
@@ -45,6 +47,10 @@ def build_dataset(
     
     # 读取并合并CSV文件
     combined_df = _read_and_combine_csv_files(files, csv_sep, csv_header, use_names)
+    
+    # 应用数据过滤（如果指定了过滤列）
+    if filter_column:
+        combined_df = _filter_data_by_column(combined_df, filter_column)
     
     # 显示数据信息
     _display_dataframe_info(combined_df)
@@ -436,3 +442,51 @@ def _inspect_batch_sizes(
         batch_size = next(iter(features.values())).shape[0]
         print(f"验证数据集批次大小: {batch_size}")
         break 
+
+
+def _filter_data_by_column(df: pd.DataFrame, filter_column: str) -> pd.DataFrame:
+    """
+    根据指定列过滤数据，只保留该列非空的记录
+    
+    Args:
+        df: 原始数据框
+        filter_column: 用于过滤的列名
+        
+    Returns:
+        filtered_df: 过滤后的数据框
+    """
+    print(f"\n🔍 开始根据 '{filter_column}' 列过滤数据...")
+    
+    # 检查列是否存在
+    if filter_column not in df.columns:
+        print(f"⚠️  警告: 列 '{filter_column}' 不存在于数据中，跳过过滤")
+        return df
+    
+    # 显示过滤前的数据统计
+    total_before = len(df)
+    null_count = df[filter_column].isna().sum() + (df[filter_column] == '').sum()
+    non_null_count = total_before - null_count
+    
+    print(f"过滤前数据统计:")
+    print(f"  总样本数: {total_before:,}")
+    print(f"  {filter_column} 为空的样本: {null_count:,} ({null_count/total_before*100:.1f}%)")
+    print(f"  {filter_column} 非空的样本: {non_null_count:,} ({non_null_count/total_before*100:.1f}%)")
+    
+    # 执行过滤：保留非空且非空字符串的记录
+    filtered_df = df[(df[filter_column].notna()) & (df[filter_column] != '')]
+    
+    # 显示过滤后的数据统计
+    total_after = len(filtered_df)
+    reduction_rate = (total_before - total_after) / total_before * 100
+    
+    print(f"过滤后数据统计:")
+    print(f"  保留样本数: {total_after:,}")
+    print(f"  过滤掉样本数: {total_before - total_after:,}")
+    print(f"  数据减少比例: {reduction_rate:.1f}%")
+    
+    # 检查过滤后的标签分布
+    if 'log_type' in filtered_df.columns:
+        print(f"过滤后标签分布:")
+        print(filtered_df['log_type'].value_counts())
+    
+    return filtered_df 

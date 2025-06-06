@@ -37,18 +37,45 @@ def check_feature_importance(
     Returns:
         特征重要性字典，其中键为特征名，值为重要性分数(基线AUC - 随机化后的AUC)
     """
-    # 设置参数
-    num_batches = train_config.get('eval_batches', 5) if train_config else 5
-    num_repeats = train_config.get('importance_repeats', 3) if train_config else 3
+    # 🔧 修复参数设置 - 大幅增加样本量和重复次数
+    num_batches = train_config.get('eval_batches', 50) if train_config else 50  # 从5增加到50
+    num_repeats = train_config.get('importance_repeats', 10) if train_config else 10  # 从3增加到10
     
-    # 使用采样数据进行评估
-    print(f"使用 {num_batches} 批次数据评估特征重要性...")
-    print(f"特征配置文件: {feat_config_path}")
+    # 计算预期样本量
+    batch_size = train_config.get('training', {}).get('batch_size', 256) if train_config else 256
+    expected_samples = num_batches * batch_size
+    
+    # 使用更大的采样数据进行评估
+    print(f"🔍 特征重要性评估配置:")
+    print(f"  批次数量: {num_batches}")
+    print(f"  每批次大小: {batch_size}")
+    print(f"  预期样本量: {expected_samples:,}")
+    print(f"  重复次数: {num_repeats}")
+    print(f"  特征配置文件: {feat_config_path}")
+    
+    sample_dataset = dataset.take(num_batches)
+    
+    # 验证实际数据量
+    actual_batches = 0
+    total_samples = 0
+    for batch in sample_dataset:
+        features, labels = batch
+        batch_samples = labels.shape[0]
+        total_samples += batch_samples
+        actual_batches += 1
+    
+    print(f"  实际批次数: {actual_batches}")
+    print(f"  实际样本量: {total_samples:,}")
+    
+    # 重新创建dataset，因为已经被遍历了
     sample_dataset = dataset.take(num_batches)
     
     # 获取基线性能
     baseline_auc, all_labels, all_preds = _calculate_baseline_performance(model, sample_dataset)
-    print(f"基线 AUC: {baseline_auc:.4f}")
+    print(f"  基线AUC: {baseline_auc:.4f}")
+    
+    # 重新创建dataset用于特征评估
+    sample_dataset = dataset.take(num_batches)
     
     # 获取特征名称
     input_feature_names = _get_feature_names(sample_dataset)
@@ -56,11 +83,15 @@ def check_feature_importance(
     # 🚀 直接从配置文件获取处理后的特征名称
     processed_feature_names = _get_processed_feature_names_from_config(feat_config_path)
     
-    print(f"原始输入特征数量: {len(input_feature_names)}")
-    print(f"处理后特征数量: {len(processed_feature_names)}")
+    print(f"\n📊 特征统计:")
+    print(f"  原始输入特征数量: {len(input_feature_names)}")
+    print(f"  处理后特征数量: {len(processed_feature_names)}")
+    
+    # 重新创建dataset用于特征评估
+    sample_dataset = dataset.take(num_batches)
     
     # 评估原始输入特征的重要性
-    print("\n评估原始输入特征重要性:")
+    print(f"\n🔍 评估原始输入特征重要性 (样本量: {total_samples:,}, 重复: {num_repeats}):")
     input_feature_importance = _evaluate_features(
         model, sample_dataset, input_feature_names, 
         baseline_auc, num_repeats, is_processed=False
@@ -69,7 +100,9 @@ def check_feature_importance(
     # 评估处理后特征的重要性
     feature_importance = input_feature_importance
     if processed_feature_names:
-        print("\n评估处理后特征重要性:")
+        print(f"\n🔍 评估处理后特征重要性 (样本量: {total_samples:,}, 重复: {num_repeats}):")
+        # 重新创建dataset
+        sample_dataset = dataset.take(num_batches)
         processed_feature_importance = _evaluate_processed_features(
             model, sample_dataset, processed_feature_names,
             baseline_auc, num_repeats, feat_config_path
@@ -78,7 +111,7 @@ def check_feature_importance(
         feature_importance.update(processed_feature_importance)
     
     # 处理和保存结果
-    sorted_importance = _process_and_save_results(feature_importance)
+    sorted_importance = _process_and_save_results(feature_importance, total_samples, num_repeats)
     
     return sorted_importance
 
@@ -245,10 +278,10 @@ def _evaluate_single_feature(
     num_repeats: int
 ) -> float:
     """评估单个特征的重要性"""
-    print(f"评估特征 '{feature_name}' 的重要性...")
+    print(f"  评估特征 '{feature_name}' 的重要性...")
     feature_aucs = []
     
-    for _ in range(num_repeats):
+    for repeat_idx in range(num_repeats):
         all_preds = []
         all_labels = []
         
@@ -264,20 +297,39 @@ def _evaluate_single_feature(
                 all_preds.extend(preds.numpy().flatten())
                 all_labels.extend(y.numpy().flatten())
             except Exception as e:
-                print(f"  预测错误: {str(e)}")
+                print(f"    重复{repeat_idx+1}预测错误: {str(e)}")
                 continue
         
         # 计算AUC
         if all_preds:
             permuted_auc = roc_auc_score(all_labels, all_preds)
             feature_aucs.append(permuted_auc)
+            print(f"    重复{repeat_idx+1}/{num_repeats}: AUC = {permuted_auc:.4f}")
     
-    # 计算重要性
+    # 计算重要性和统计信息
     if feature_aucs:
         avg_permuted_auc = np.mean(feature_aucs)
-        return baseline_auc - avg_permuted_auc
+        std_permuted_auc = np.std(feature_aucs)
+        importance = baseline_auc - avg_permuted_auc
+        
+        # 计算95%置信区间（假设正态分布）
+        confidence_interval = 1.96 * std_permuted_auc / np.sqrt(len(feature_aucs))
+        
+        print(f"    📊 统计结果:")
+        print(f"      基线AUC: {baseline_auc:.4f}")
+        print(f"      平均置换AUC: {avg_permuted_auc:.4f} ± {std_permuted_auc:.4f}")
+        print(f"      重要性: {importance:.6f}")
+        print(f"      95%置信区间: ±{confidence_interval:.6f}")
+        
+        # 判断统计显著性（简单检验）
+        if abs(importance) > 2 * std_permuted_auc:
+            print(f"      ✅ 统计显著 (|重要性| > 2×标准差)")
+        else:
+            print(f"      ⚠️  统计不显著 (|重要性| ≤ 2×标准差)")
+        
+        return importance
     else:
-        print(f"  无法评估特征 {feature_name} 的重要性")
+        print(f"    ❌ 无法评估特征 {feature_name} 的重要性")
         return 0.0
 
 
@@ -332,7 +384,7 @@ def _evaluate_bert_feature_importance(
         return 0.0
 
 
-def _process_and_save_results(feature_importance: Dict[str, float]) -> Dict[str, float]:
+def _process_and_save_results(feature_importance: Dict[str, float], total_samples: int, num_repeats: int) -> Dict[str, float]:
     """处理和保存特征重要性结果"""
     # 按重要性排序
     sorted_importance = {
@@ -344,23 +396,56 @@ def _process_and_save_results(feature_importance: Dict[str, float]) -> Dict[str,
     }
     
     # 打印特征重要性排名
-    print("\n特征重要性排名:")
+    print(f"\n🏆 特征重要性排名 (样本量: {total_samples:,}, 重复: {num_repeats}):")
+    print("-" * 60)
     for i, (feature, importance) in enumerate(sorted_importance.items()):
         # 对BERT特征进行特殊标记
         feature_display = feature
         if any(bert_class in feature for bert_class in ['BertEmbedding', 'PrecomputedEmbedding']):
             feature_display = f"[BERT] {feature}"
-        print(f"{i+1}. {feature_display}: {importance:.6f}")
+        
+        # 添加重要性评级
+        if abs(importance) > 0.05:
+            rating = "🔥 高"
+        elif abs(importance) > 0.01:
+            rating = "⚡ 中"
+        elif abs(importance) > 0.001:
+            rating = "💫 低"
+        else:
+            rating = "❓ 微弱"
+            
+        print(f"{i+1:2d}. {feature_display}: {importance:+.6f} ({importance*100:+.2f}%) {rating}")
     
     # 保存结果
     os.makedirs("./logs", exist_ok=True)
     timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     importance_file = f"./logs/feature_importance_{timestamp}.json"
     
-    with open(importance_file, 'w') as f:
-        json.dump(sorted_importance, f, indent=2)
+    # 增强的保存信息
+    result_data = {
+        "metadata": {
+            "timestamp": timestamp,
+            "total_samples": total_samples,
+            "num_repeats": num_repeats,
+            "baseline_info": "使用排列重要性方法，基于AUC降幅计算"
+        },
+        "feature_importance": sorted_importance,
+        "summary": {
+            "total_features": len(sorted_importance),
+            "significant_features": len([f for f, imp in sorted_importance.items() if abs(imp) > 0.01]),
+            "max_importance": max(abs(imp) for imp in sorted_importance.values()) if sorted_importance else 0,
+            "min_importance": min(abs(imp) for imp in sorted_importance.values()) if sorted_importance else 0
+        }
+    }
     
-    print(f"特征重要性已保存到: {importance_file}")
+    with open(importance_file, 'w') as f:
+        json.dump(result_data, f, indent=2)
+    
+    print(f"\n💾 特征重要性已保存到: {importance_file}")
+    print(f"📊 评估摘要:")
+    print(f"  总特征数: {result_data['summary']['total_features']}")
+    print(f"  显著特征数: {result_data['summary']['significant_features']} (重要性 > 1%)")
+    print(f"  最大重要性: {result_data['summary']['max_importance']:.4f}")
     
     return sorted_importance
 

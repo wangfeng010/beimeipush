@@ -69,14 +69,16 @@ def extract_config_info(
 
 def load_feature_config(
     config_path: str = "config/feat.yml", 
-    exclude_features: Optional[List[str]] = None
+    exclude_features: Optional[List[str]] = None,
+    exclude_config_key: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
     加载特征配置
     
     Args:
         config_path: 配置文件路径，默认为config/feat.yml
-        exclude_features: 要排除的特征列表，默认排除['user_id']
+        exclude_features: 要排除的特征列表，如果提供则优先使用此参数
+        exclude_config_key: 排除配置的键名，从配置文件中读取排除特征列表
         
     Returns:
         处理后的特征管道配置列表
@@ -86,14 +88,69 @@ def load_feature_config(
         yaml.YAMLError: YAML解析错误
         KeyError: 配置中缺少必要的键
     """
-    # 设置默认排除的特征
-    exclude_features = exclude_features or ['user_id']
-    
     # 加载配置文件
     feat_config = _load_yaml_config(config_path)
     
+    # 确定要排除的特征列表
+    final_exclude_features = _determine_exclude_features(
+        feat_config, exclude_features, exclude_config_key
+    )
+    
     # 处理特征管道配置
-    return _process_feature_pipelines(feat_config, exclude_features)
+    return _process_feature_pipelines(feat_config, final_exclude_features)
+
+
+def _determine_exclude_features(
+    feat_config: Dict[str, Any],
+    exclude_features: Optional[List[str]] = None,
+    exclude_config_key: Optional[str] = None
+) -> List[str]:
+    """
+    确定要排除的特征列表
+    
+    Args:
+        feat_config: 特征配置字典
+        exclude_features: 直接指定的排除特征列表
+        exclude_config_key: 配置文件中的排除配置键名
+        
+    Returns:
+        最终的排除特征列表
+    """
+    # 1. 如果直接提供了exclude_features，优先使用
+    if exclude_features is not None:
+        print(f"使用直接指定的排除特征: {exclude_features}")
+        return exclude_features
+    
+    # 2. 如果指定了exclude_config_key，从配置文件读取
+    if exclude_config_key is not None:
+        exclude_features_config = feat_config.get('exclude_features', {})
+        if exclude_config_key in exclude_features_config:
+            features_to_exclude = exclude_features_config[exclude_config_key]
+            print(f"从配置文件读取排除特征 [{exclude_config_key}]: {features_to_exclude}")
+            return features_to_exclude
+        else:
+            print(f"警告: 配置键 '{exclude_config_key}' 不存在，使用默认配置")
+    
+    # 3. 尝试使用配置文件中的current配置
+    exclude_features_config = feat_config.get('exclude_features', {})
+    if 'current' in exclude_features_config:
+        current_config_key = exclude_features_config['current']
+        if current_config_key in exclude_features_config:
+            features_to_exclude = exclude_features_config[current_config_key]
+            print(f"使用当前配置 [{current_config_key}]: {features_to_exclude}")
+            return features_to_exclude
+        else:
+            print(f"警告: 当前配置键 '{current_config_key}' 不存在")
+    
+    # 4. 使用默认配置
+    if 'default' in exclude_features_config:
+        default_features = exclude_features_config['default']
+        print(f"使用默认配置: {default_features}")
+        return default_features
+    
+    # 5. 最后的fallback，排除user_id
+    print("使用最后的默认值: ['user_id']")
+    return ['user_id']
 
 
 def _load_yaml_config(config_path: str) -> Dict[str, Any]:
@@ -177,18 +234,36 @@ def _should_exclude_pipeline(
     Returns:
         如果管道应该被排除则返回True，否则返回False
     """
-    # 检查特征名称是否应该被排除
+    # 1. 检查特征名称是否应该被排除（原有逻辑）
     feat_name = pipeline.get('feat_name', '')
     for exclude_feature in exclude_features:
         if exclude_feature in feat_name:
             print(f"排除特征管道: {feat_name} (包含排除关键词: {exclude_feature})")
             return True
     
-    # 检查管道的第一个操作是否针对被排除的特征
+    # 2. 检查管道的第一个操作是否针对被排除的特征（原有逻辑）
     if 'operations' in pipeline and pipeline['operations']:
         first_op = pipeline['operations'][0]
         if 'col_in' in first_op and first_op['col_in'] in exclude_features:
-            print(f"排除特征: {first_op['col_in']}")
+            print(f"排除特征管道: {feat_name} (基于输入列: {first_op['col_in']})")
+            return True
+    
+    # 3. 🔧 新增：检查管道中任何操作是否以被排除的特征作为输入
+    if 'operations' in pipeline and pipeline['operations']:
+        for i, operation in enumerate(pipeline['operations']):
+            if 'col_in' in operation and operation['col_in'] in exclude_features:
+                print(f"排除特征管道: {feat_name} (操作{i+1}使用了被排除的输入列: {operation['col_in']})")
+                return True
+    
+    # 4. 🔧 新增：检查feat_name是否基于被排除的特征命名
+    # 例如：user_propernoun -> user_propernoun_hash, user_propernoun_emb等
+    for exclude_feature in exclude_features:
+        if feat_name.startswith(exclude_feature + '_'):
+            print(f"排除特征管道: {feat_name} (基于被排除特征的衍生特征: {exclude_feature})")
+            return True
+        # 也检查以exclude_feature结尾的情况
+        if feat_name.endswith('_' + exclude_feature):
+            print(f"排除特征管道: {feat_name} (基于被排除特征的衍生特征: {exclude_feature})")
             return True
     
     return False
