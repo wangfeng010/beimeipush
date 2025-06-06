@@ -46,7 +46,7 @@ def build_dataset(
     csv_sep, csv_header, use_names = _get_csv_format_settings(data_config, column_names)
     
     # 读取并合并CSV文件
-    combined_df = _read_and_combine_csv_files(files, csv_sep, csv_header, use_names)
+    combined_df = _read_and_combine_data_files(files, csv_sep, csv_header, use_names)
     
     # 应用数据过滤（如果指定了过滤列）
     if filter_column:
@@ -72,16 +72,18 @@ def build_dataset(
 
 
 def _find_csv_files(file_pattern: str) -> List[str]:
-    """查找符合模式的CSV文件"""
+    """查找符合模式的数据文件"""
     files = glob.glob(file_pattern)
-    print(f"找到CSV文件: {len(files)}个")
+    # 根据文件扩展名确定文件类型
+    file_type = "TXT" if ".txt" in file_pattern else "CSV"
+    print(f"找到{file_type}文件: {len(files)}个")
     if len(files) > 3:
         print(f"示例文件: {files[:5]}")
     else:
         print(f"示例文件: {files}")
     
     if not files:
-        raise ValueError(f"在 {file_pattern} 找不到任何CSV文件")
+        raise ValueError(f"在 {file_pattern} 找不到任何{file_type}文件")
     
     return files
 
@@ -130,14 +132,16 @@ def _get_csv_format_settings(
     return csv_sep, csv_header, use_names
 
 
-def _read_and_combine_csv_files(
+def _read_and_combine_data_files(
     files: List[str], 
     csv_sep: str, 
     csv_header: Optional[int], 
     use_names: Optional[List[str]]
 ) -> pd.DataFrame:
-    """读取并合并CSV文件"""
-    print("读取CSV文件...")
+    """读取并合并数据文件（支持CSV和TXT格式）"""
+    # 根据文件扩展名确定文件类型
+    file_type = "TXT" if any(".txt" in f for f in files) else "CSV"
+    print(f"读取{file_type}文件...")
     dfs = []
     
     # 显式指定每列的类型，确保一致性
@@ -175,7 +179,7 @@ def _read_and_combine_csv_files(
             print(f"  读取错误: {e}")
     
     if not dfs:
-        raise ValueError("没有成功读取任何CSV文件")
+        raise ValueError(f"没有成功读取任何{file_type}文件")
         
     # 合并所有数据框
     combined_df = pd.concat(dfs)

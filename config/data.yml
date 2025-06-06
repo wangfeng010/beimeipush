@@ -9,12 +9,12 @@ csv_format:
   # separator: "\t"  # 制表符分隔
   # header: null     # 无表头
 
-TXT格式设置（线上环境）
-txt_format:
-  separator: "\t"  # 制表符分隔
-  header: null     # 无表头
-  encoding: "utf-8"
-  file_extension: ".txt"
+# TXT格式设置（线上环境）
+# txt_format:
+#   separator: "\t"  # 制表符分隔
+#   header: null     # 无表头
+#   encoding: "utf-8"
+#   file_extension: ".txt"
 
 raw_data_columns:
   - user_id: string

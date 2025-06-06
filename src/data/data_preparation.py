@@ -79,29 +79,30 @@ def prepare_datasets(data_config: Dict[str, Any],
 
 def _find_data_files(data_config: Dict[str, Any]) -> List[str]:
     """
-    查找训练数据文件
+    查找数据文件
     
     参数:
         data_config: 数据配置字典
     
     返回:
-        csv_files: CSV文件列表
+        data_files: 数据文件路径列表
     """
-    train_dir = data_config.get('train_dir', 'data/train')
-    file_pattern = os.path.join(train_dir, "*.csv")
+    file_pattern = _get_file_pattern(data_config)
     
-    # 检查文件是否存在
-    csv_files = glob.glob(file_pattern)
-    print(f"找到CSV文件: {len(csv_files)}个")
-    print(f"示例文件: {csv_files[:5] if csv_files else '无'}")
+    # 查找数据文件
+    data_files = glob.glob(file_pattern)
     
-    if not csv_files:
-        # 创建测试数据以便继续
-        print("未找到实际数据文件，将创建一个小的测试数据集进行测试")
-        create_test_data(train_dir)
-        csv_files = glob.glob(file_pattern)
+    # 确定文件类型用于显示
+    file_type = "TXT" if _is_txt_format(data_config) else "CSV"
     
-    return csv_files
+    print(f"找到{file_type}文件: {len(data_files)}个")
+    print(f"示例文件: {data_files[:5] if data_files else '无'}")
+    
+    if not data_files:
+        # 线上环境不应该创建测试数据，直接抛出错误
+        raise FileNotFoundError(f"在 {data_config.get('train_dir', 'data/train')} 目录下未找到任何{file_type}文件。请检查数据路径和文件格式配置。")
+    
+    return data_files
 
 
 def _get_file_pattern(data_config: Dict[str, Any]) -> str:
@@ -115,7 +116,38 @@ def _get_file_pattern(data_config: Dict[str, Any]) -> str:
         file_pattern: 文件匹配模式
     """
     train_dir = data_config.get('train_dir', 'data/train')
-    return os.path.join(train_dir, "*.csv")
+    
+    # 根据配置确定文件扩展名
+    if _is_txt_format(data_config):
+        file_extension = "*.txt"
+    else:
+        file_extension = "*.csv"
+    
+    return os.path.join(train_dir, file_extension)
+
+
+def _is_txt_format(data_config: Dict[str, Any]) -> bool:
+    """
+    判断是否使用TXT格式
+    
+    参数:
+        data_config: 数据配置字典
+    
+    返回:
+        bool: True表示使用TXT格式，False表示使用CSV格式
+    """
+    # 检查环境变量
+    env_format = os.getenv('DATA_FORMAT', '').lower()
+    if env_format == 'txt':
+        return True
+    elif env_format == 'csv':
+        return False
+    
+    # 如果没有环境变量，检查配置文件中是否有txt_format且未被注释
+    if data_config and 'txt_format' in data_config:
+        return True
+    
+    return False
 
 
 def _parse_column_config(data_config: Dict[str, Any]) -> Tuple[List[str], List[Any], Dict[str, str]]:
@@ -282,45 +314,4 @@ def log_user_split(train_users, val_users, unique_user_ids, total_samples, filte
     with open(user_split_log, 'w') as f:
         json.dump(split_info, f, indent=2)
     
-    print(f"用户划分信息已保存到: {user_split_log}")
-
-
-def create_test_data(data_dir):
-    """
-    创建测试数据集用于调试
-    
-    参数:
-        data_dir: 数据目录
-    """
-    os.makedirs(data_dir, exist_ok=True)
-    
-    # 创建一个小的测试CSV文件
-    test_file = os.path.join(data_dir, "test_data.csv")
-    
-    # 简单的CSV头和数据
-    header = (
-        "user_id,create_time,log_type,watchlists,holdings,country,"
-        "prefer_bid,user_propernoun,push_title,push_content,"
-        "item_code,item_tags,submit_type"
-    )
-    
-    # 生成10条测试数据
-    rows = []
-    for i in range(10):
-        user_id = f"user_{i}"
-        create_time = "2023-01-01 12:00:00"
-        log_type = "1" if i % 2 == 0 else "0"  # 一半是正样本，一半是负样本
-        
-        row = (
-            f"{user_id},{create_time},{log_type},list1 & list2,,CN,"
-            f"bid1#1|bid2#2,,Test Title,Test Content,code123,tag1 tag2,"
-        )
-        rows.append(row)
-    
-    # 写入文件
-    with open(test_file, 'w') as f:
-        f.write(header + "\n")
-        f.write("\n".join(rows))
-    
-    print(f"已创建测试数据文件: {test_file}")
-    print(f"测试数据包含 {len(rows)} 条记录") 
+    print(f"用户划分信息已保存到: {user_split_log}") 
