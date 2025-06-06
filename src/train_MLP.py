@@ -58,6 +58,8 @@ from src.models.model_utils import create_and_compile_model, test_model_on_batch
 # 从深度模型包导入MLP模型
 from src.models.deep import MLP
 from src.data.feature_preprocessor import apply_feature_preprocessing
+# 导入新的GAUC工具
+from src.utils.gauc_utils import calculate_gauc, calculate_gauc_with_original_data, save_gauc_results, compare_auc_gauc, validate_gauc_calculation
 
 
 def set_random_seeds(seed: int = 42) -> None:
@@ -317,8 +319,24 @@ def train_and_evaluate_model(
         train_config=train_config
     )
     
-    # 3. 输出训练结果
-    print_training_results(history)
+    # 3. 准备原始数据集用于GAUC计算
+    print("\n🔄 准备原始数据集用于GAUC计算...")
+    try:
+        data_config, _ = load_configurations()
+        original_full_dataset, _, original_validation_dataset, _, _ = prepare_datasets(
+            data_config, train_config, TF_DTYPE_MAPPING
+        )
+        print("✅ 原始数据集准备完成")
+        
+        # 4. 输出训练结果（包括AUC和GAUC）
+        print_training_results_with_gauc(
+            history, model, validation_dataset, original_validation_dataset, train_config
+        )
+        
+    except Exception as e:
+        print(f"⚠️ 原始数据集准备失败: {e}")
+        print("🔄 使用基本评价方式...")
+        print_training_results(history)
     
     # 打印模型的特征管道信息
     print("\n模型特征管道信息:")
@@ -335,19 +353,174 @@ def train_and_evaluate_model(
     else:
         print("模型没有定义特征处理管道")
     
-    # 4. 评估特征重要性
+    # 5. 评估特征重要性
     print("\n开始评估特征重要性...")
     feature_importance = check_feature_importance(
         model, validation_dataset, train_config=train_config
     )
     
-    # 5. 绘制特征重要性图
+    # 6. 绘制特征重要性图
     plot_feature_importance(feature_importance)
+
+
+def print_training_results_with_gauc(
+    history: tf.keras.callbacks.History,
+    model: tf.keras.Model,
+    processed_validation_dataset: tf.data.Dataset,
+    original_validation_dataset: tf.data.Dataset,
+    train_config: Optional[Dict[str, Any]] = None
+) -> None:
+    """
+    打印训练结果，包括AUC和GAUC指标
+    
+    参数:
+        history: 训练历史对象
+        model: 训练好的模型
+        processed_validation_dataset: 经过特征处理的验证数据集
+        original_validation_dataset: 原始验证数据集（包含user_id）
+        train_config: 训练配置
+    """
+    import os
+    import json
+    import csv
+    import datetime
+    
+    print(f"\n📊 模型训练完成 - 性能评估结果")
+    
+    # 1. 基本AUC指标
+    train_auc = history.history['auc'][-1]
+    val_auc = history.history['val_auc'][-1]
+    auc_diff = train_auc - val_auc
+    
+    print(f"🎯 AUC 指标:")
+    print(f"  训练集AUC: {train_auc:.6f}")
+    print(f"  验证集AUC: {val_auc:.6f}")
+    
+    # 2. 过拟合检测
+    if auc_diff > 0.05:
+        print(f"  ⚠️  过拟合警告: 训练AUC - 验证AUC = {auc_diff:.4f}")
+    else:
+        print(f"  ✅ 泛化性能良好: 差异 = {auc_diff:.4f}")
+    
+    # 初始化日志数据
+    log_data = {
+        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "train_auc": float(train_auc),
+        "val_auc": float(val_auc),
+        "auc_diff": float(auc_diff),
+        "val_gauc": 0.0,
+        "auc_gauc_gap": 0.0,
+        "gauc_success": False,
+        "valid_users": 0,
+        "total_samples": 0,
+        "notes": ""
+    }
+    
+    # 3. GAUC指标计算
+    print(f"\n🔍 开始计算GAUC指标...")
+    try:
+        # 计算GAUC（使用原始数据集获取user_id）
+        max_batches = train_config.get('gauc_eval_batches', 50) if train_config else 50
+        
+        gauc_score, gauc_info = calculate_gauc_with_original_data(
+            model, 
+            processed_validation_dataset.take(max_batches),
+            original_validation_dataset.take(max_batches),
+            min_samples_per_user=2,
+            max_batches=max_batches,
+            verbose=True
+        )
+        
+        print(f"\n🏆 GAUC 指标:")
+        print(f"  验证集GAUC: {gauc_score:.6f}")
+        print(f"  有效用户数: {gauc_info.get('valid_users', 0)}")
+        print(f"  总样本数: {gauc_info.get('total_samples', 0)}")
+        
+        # 更新日志数据
+        log_data.update({
+            "val_gauc": float(gauc_score),
+            "auc_gauc_gap": float(val_auc - gauc_score),
+            "gauc_success": True,
+            "valid_users": gauc_info.get('valid_users', 0),
+            "total_samples": gauc_info.get('total_samples', 0),
+            "notes": "GAUC计算成功"
+        })
+        
+        # 4. AUC vs GAUC 对比分析
+        comparison = compare_auc_gauc(val_auc, gauc_score, verbose=True)
+        
+        # 5. 保存GAUC结果
+        save_path = save_gauc_results(gauc_score, gauc_info)
+        print(f"\n💾 GAUC结果已保存到: {save_path}")
+        
+        # 6. 输出总结
+        print(f"\n📋 性能总结:")
+        print(f"  ✅ 验证集AUC:  {val_auc:.6f}")
+        print(f"  ✅ 验证集GAUC: {gauc_score:.6f}")
+        print(f"  📊 AUC-GAUC差异: {comparison['absolute_difference']:.6f} ({comparison['relative_difference_percent']:.2f}%)")
+        print(f"  🎯 性能解读: {comparison['interpretation']}")
+        
+    except Exception as e:
+        print(f"  ❌ GAUC计算失败: {e}")
+        print(f"  💡 可能原因: 数据集缺少user_id字段或用户样本不足")
+        print(f"  🔄 继续使用AUC指标评估模型性能")
+        
+        # 更新日志数据（GAUC失败情况）
+        log_data.update({
+            "notes": f"GAUC计算失败: {str(e)}"
+        })
+        
+        import traceback
+        traceback.print_exc()
+    
+    # 7. 保存简单的AUC-GAUC对比日志
+    try:
+        os.makedirs('./logs', exist_ok=True)
+        
+        # 生成日志文件名
+        timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        csv_log_file = f'./logs/auc_gauc_log_{timestamp_str}.csv'
+        json_log_file = f'./logs/auc_gauc_log_{timestamp_str}.json'
+        
+        # 保存JSON格式的详细日志
+        with open(json_log_file, 'w') as f:
+            json.dump(log_data, f, indent=2, ensure_ascii=False)
+        
+        # 保存CSV格式的简化日志
+        csv_exists = os.path.exists('./logs/auc_gauc_summary.csv')
+        with open('./logs/auc_gauc_summary.csv', 'a', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            
+            # 如果文件不存在，写入头部
+            if not csv_exists:
+                writer.writerow([
+                    'timestamp', 'train_auc', 'val_auc', 'val_gauc', 
+                    'auc_gauc_gap', 'gauc_success', 'valid_users', 'notes'
+                ])
+            
+            # 写入数据行
+            writer.writerow([
+                log_data['timestamp'],
+                f"{log_data['train_auc']:.6f}",
+                f"{log_data['val_auc']:.6f}",
+                f"{log_data['val_gauc']:.6f}",
+                f"{log_data['auc_gauc_gap']:.6f}",
+                log_data['gauc_success'],
+                log_data['valid_users'],
+                log_data['notes']
+            ])
+        
+        print(f"\n📝 AUC-GAUC对比日志已保存:")
+        print(f"  📄 CSV汇总: ./logs/auc_gauc_summary.csv")
+        print(f"  📋 详细记录: {json_log_file}")
+        
+    except Exception as e:
+        print(f"⚠️ 保存日志失败: {e}")
 
 
 def print_training_results(history: tf.keras.callbacks.History) -> None:
     """
-    打印训练结果
+    打印训练结果（保留原函数作为向后兼容）
     
     参数:
         history: 训练历史对象
