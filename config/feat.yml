@@ -1,5 +1,5 @@
 exclude_features:
-  current: exclude_user_propernoun
+  current: default
   default: []
   exclude_user_behavior:
   - user_watch_stk_code

@@ -90,15 +90,37 @@ def _get_csv_format_settings(
     data_config: Optional[Dict], 
     column_names: List[str]
 ) -> Tuple[str, Optional[int], Optional[List[str]]]:
-    """从配置中获取CSV格式设置"""
+    """从配置中获取数据格式设置（支持csv_format和txt_format）"""
     csv_sep = ','  # 默认逗号分隔
     csv_header = 0  # 默认有表头
     
-    if data_config and 'csv_format' in data_config:
+    # 检查环境变量来决定使用哪种格式
+    env_format = os.getenv('DATA_FORMAT', '').lower()  # 'txt' 或 'csv'
+    
+    # 如果设置了环境变量，优先使用指定格式
+    if env_format == 'txt' and data_config and 'txt_format' in data_config:
+        txt_format = data_config['txt_format']
+        csv_sep = txt_format.get('separator', '\t')
+        csv_header = txt_format.get('header', None)
+        print(f"🌍 环境变量指定使用TXT格式: 分隔符='{csv_sep}', 表头={csv_header}")
+    elif env_format == 'csv' and data_config and 'csv_format' in data_config:
         csv_format = data_config['csv_format']
         csv_sep = csv_format.get('separator', ',')
         csv_header = csv_format.get('header', 0)
-        print(f"使用配置的CSV格式: 分隔符='{csv_sep}', 表头={csv_header}")
+        print(f"🌍 环境变量指定使用CSV格式: 分隔符='{csv_sep}', 表头={csv_header}")
+    # 如果没有设置环境变量，使用原来的优先级逻辑
+    elif data_config and 'txt_format' in data_config:
+        txt_format = data_config['txt_format']
+        csv_sep = txt_format.get('separator', '\t')
+        csv_header = txt_format.get('header', None)
+        print(f"使用线上TXT格式: 分隔符='{csv_sep}', 表头={csv_header}")
+    elif data_config and 'csv_format' in data_config:
+        csv_format = data_config['csv_format']
+        csv_sep = csv_format.get('separator', ',')
+        csv_header = csv_format.get('header', 0)
+        print(f"使用本地CSV格式: 分隔符='{csv_sep}', 表头={csv_header}")
+    else:
+        print(f"使用默认格式: 分隔符='{csv_sep}', 表头={csv_header}")
     
     # 决定是否需要提供列名
     use_names = None
