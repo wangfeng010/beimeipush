@@ -159,3 +159,5 @@ models/final_model
 models/push_binary_classification_model
 
 results/
+
+env/RecJourney-main

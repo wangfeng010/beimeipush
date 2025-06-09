@@ -19,6 +19,7 @@ import yaml
 import numpy as np
 from pprint import pprint
 from glob import glob  # 添加glob模块导入
+import time
 
 
 # 添加项目路径
@@ -954,3 +955,704 @@ else:
 # 如果需要和树模型对比，请重新运行完整的流程
 
 print("\n✅ 完整的特征工程 -> 树模型 -> 深度模型流水线已完成！")
+
+# 10AFM模型训练
+
+# ---------------------------------------------------------------------------- #
+# 5. AFM模型实现 (Attentional Factorization Machines)
+# ---------------------------------------------------------------------------- #
+
+import torch
+import torch.nn as nn
+from torch import Tensor
+from itertools import combinations
+import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader
+from sklearn.metrics import roc_auc_score, accuracy_score, log_loss
+import numpy as np
+
+class AttentionalFactorizationMachine(nn.Module):
+    """
+    注意力因子分解机 (AFM)
+    
+    参数:
+    - num_fields: int. 特征字段数量
+    - emb_dim: int. 嵌入维度
+    - attn_dim: int. 注意力维度
+    - num_classes: int. 类别数量. 默认: 1
+    - bias: bool. 是否使用偏置. 默认: True
+    - dropout_rate: float. Dropout率. 默认: 0.2
+    
+    输入:
+    - x: Tensor. 形状: (batch_size, num_fields, emb_dim)
+    
+    返回:
+    - y: Tensor. 形状: (batch_size, num_classes)
+    """
+
+    def __init__(
+        self,
+        num_fields: int,
+        emb_dim: int,
+        attn_dim: int,
+        num_classes: int = 1,
+        bias: bool = True,
+        dropout_rate: float = 0.2,
+    ) -> None:
+        super().__init__()
+        
+        # 特征字段组合
+        combs = list(combinations(range(num_fields), 2))
+        self.comb_i = [c[0] for c in combs]
+        self.comb_j = [c[1] for c in combs]
+        
+        # 注意力网络
+        self.linear_attn = nn.Sequential(
+            nn.Linear(emb_dim, attn_dim, bias),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate),
+            nn.Linear(attn_dim, 1, bias=False),
+        )
+        
+        # 输出层
+        self.fc = nn.Linear(emb_dim, num_classes)
+        
+        # Dropout
+        self.dropout = nn.Dropout(dropout_rate)
+        
+        # 参数初始化
+        self._init_weights()
+    
+    def _init_weights(self):
+        """权重初始化"""
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        前向传播
+        
+        Arguments:
+            x -- Tensor. shape: (batch_size, num_fields, emb_dim)
+        
+        Returns:
+            y -- Tensor. shape: (batch_size, num_classes)
+        """
+        print(f"    🔍 AFM前向传播开始，输入形状: {x.shape}")
+        
+        # 获取特征交互对
+        print(f"    📊 计算特征交互对，组合数: {len(self.comb_i)}")
+        x_i = x[:, self.comb_i]  # (batch_size, num_pairs, emb_dim)
+        x_j = x[:, self.comb_j]  # (batch_size, num_pairs, emb_dim)
+        print(f"    ✅ 特征交互对计算完成，x_i: {x_i.shape}, x_j: {x_j.shape}")
+        
+        # 元素级乘积得到交互特征
+        x_cross = x_i * x_j  # (batch_size, num_pairs, emb_dim)
+        print(f"    ✅ 交互特征计算完成，x_cross: {x_cross.shape}")
+        
+        # 计算注意力分数
+        print(f"    🧠 开始计算注意力分数...")
+        attn_score = self.linear_attn(x_cross)  # (batch_size, num_pairs, 1)
+        print(f"    ✅ 注意力分数计算完成，attn_score: {attn_score.shape}")
+        
+        attn_score = torch.softmax(attn_score, dim=1)  # 注意力权重归一化
+        print(f"    ✅ 注意力权重归一化完成")
+        
+        # 加权求和得到最终特征表示
+        f = torch.sum(attn_score * x_cross, dim=1)  # (batch_size, emb_dim)
+        print(f"    ✅ 加权求和完成，f: {f.shape}")
+        
+        # 应用dropout
+        f = self.dropout(f)
+        print(f"    ✅ Dropout完成")
+        
+        # 输出预测
+        y = self.fc(f)  # (batch_size, num_classes)
+        print(f"    ✅ 最终输出完成，y: {y.shape}")
+        
+        return y
+
+
+class EmbeddingLayer(nn.Module):
+    """
+    嵌入层 - 处理稀疏特征和变长稀疏特征
+    """
+    
+    def __init__(self, feat_configs: list, verbose: bool = True):
+        super().__init__()
+        self.feat_configs = feat_configs
+        self.embeddings = nn.ModuleDict()
+        self.feat_info = {}
+        
+        if verbose:
+            print("🔧 构建嵌入层...")
+        
+        for config in feat_configs:
+            feat_name = config['feat_name']
+            feat_type = config['feat_type']
+            vocab_size = config['vocabulary_size']
+            emb_dim = config['embedding_dim']
+            
+            # 创建嵌入层
+            self.embeddings[feat_name] = nn.Embedding(vocab_size + 1, emb_dim, padding_idx=0)
+            
+            # 存储特征信息
+            self.feat_info[feat_name] = {
+                'type': feat_type,
+                'vocab_size': vocab_size,
+                'emb_dim': emb_dim
+            }
+            
+            if verbose:
+                print(f"  - {feat_name}: {feat_type}, vocab={vocab_size}, emb_dim={emb_dim}")
+        
+        # 初始化嵌入权重
+        self._init_embeddings()
+    
+    def _init_embeddings(self):
+        """初始化嵌入权重"""
+        for emb in self.embeddings.values():
+            nn.init.xavier_uniform_(emb.weight)
+            # padding idx设为0
+            with torch.no_grad():
+                emb.weight[0].fill_(0)
+    
+    def forward(self, features_dict):
+        """
+        前向传播
+        
+        Args:
+            features_dict: dict, 特征字典 {feat_name: tensor}
+        
+        Returns:
+            embedded_features: list of tensors, 每个tensor形状为 (batch_size, emb_dim)
+        """
+        print(f"  🔧 嵌入层开始处理 {len(features_dict)} 个特征...")
+        embedded_features = []
+        
+        for i, config in enumerate(self.feat_configs):
+            feat_name = config['feat_name']
+            feat_type = config['feat_type']
+            
+            if feat_name not in features_dict:
+                print(f"    ⚠️  特征 {feat_name} 不在输入中，跳过")
+                continue
+            
+            feat_tensor = features_dict[feat_name]
+            print(f"    📊 处理特征 {i+1}/{len(self.feat_configs)}: {feat_name} ({feat_type}), 输入形状: {feat_tensor.shape}")
+            
+            if feat_type == 'sparse':
+                # 稀疏特征: (batch_size,) -> (batch_size, emb_dim)
+                emb = self.embeddings[feat_name](feat_tensor)
+                print(f"      ✅ 稀疏特征嵌入完成，输出形状: {emb.shape}")
+                embedded_features.append(emb)
+                
+            elif feat_type == 'varlen_sparse':
+                # 变长稀疏特征: (batch_size, max_len) -> (batch_size, emb_dim)
+                emb = self.embeddings[feat_name](feat_tensor)  # (batch_size, max_len, emb_dim)
+                print(f"      📊 变长特征嵌入: {emb.shape}")
+                
+                # 平均池化
+                mask = (feat_tensor != 0).float().unsqueeze(-1)  # (batch_size, max_len, 1)
+                print(f"      📊 掩码形状: {mask.shape}")
+                
+                emb_masked = emb * mask  # (batch_size, max_len, emb_dim)
+                emb_pooled = emb_masked.sum(dim=1) / (mask.sum(dim=1) + 1e-8)  # (batch_size, emb_dim)
+                print(f"      ✅ 变长特征池化完成，输出形状: {emb_pooled.shape}")
+                embedded_features.append(emb_pooled)
+        
+        print(f"  ✅ 嵌入层处理完成，生成 {len(embedded_features)} 个特征嵌入")
+        return embedded_features
+
+
+class PushAFMModel(nn.Module):
+    """
+    完整的AFM模型 - 专门用于推送分类任务
+    """
+    
+    def __init__(self, feat_configs: list, train_config: dict = None, verbose: bool = True):
+        super().__init__()
+        
+        self.feat_configs = feat_configs
+        self.train_config = train_config or {}
+        
+        # 获取嵌入维度
+        emb_dims = [config['embedding_dim'] for config in feat_configs]
+        if len(set(emb_dims)) != 1:
+            raise ValueError("所有特征的嵌入维度必须相同")
+        self.emb_dim = emb_dims[0]
+        
+        # 特征数量
+        self.num_fields = len(feat_configs)
+        
+        if verbose:
+            print(f"🏗️  构建AFM模型...")
+            print(f"  特征字段数: {self.num_fields}")
+            print(f"  嵌入维度: {self.emb_dim}")
+        
+        # 嵌入层
+        self.embedding_layer = EmbeddingLayer(feat_configs, verbose=verbose)
+        
+        # AFM参数
+        model_config = self.train_config.get('model', {})
+        attn_dim = model_config.get('attention_dim', 64)  # 注意力维度
+        dropout_rate = model_config.get('dropout_rate', 0.2)
+        
+        if verbose:
+            print(f"  注意力维度: {attn_dim}")
+            print(f"  Dropout率: {dropout_rate}")
+        
+        # AFM核心
+        self.afm = AttentionalFactorizationMachine(
+            num_fields=self.num_fields,
+            emb_dim=self.emb_dim,
+            attn_dim=attn_dim,
+            num_classes=1,
+            dropout_rate=dropout_rate
+        )
+        
+        # Sigmoid激活函数用于二分类
+        self.sigmoid = nn.Sigmoid()
+        
+        if verbose:
+            total_params = sum(p.numel() for p in self.parameters())
+            print(f"  总参数量: {total_params:,}")
+    
+    def forward(self, features_dict):
+        """
+        前向传播
+        """
+        # 1. 嵌入层处理
+        embedded_features = self.embedding_layer(features_dict)  # list of (batch_size, emb_dim)
+        
+        # 2. 堆叠成AFM输入格式
+        x = torch.stack(embedded_features, dim=1)  # (batch_size, num_fields, emb_dim)
+        
+        # 3. AFM计算
+        logits = self.afm(x)  # (batch_size, 1)
+        
+        # 4. Sigmoid激活
+        probs = self.sigmoid(logits)  # (batch_size, 1)
+        
+        return probs.squeeze(-1)  # (batch_size,)
+
+
+class PushDataset(Dataset):
+    """
+    推送数据的PyTorch Dataset
+    """
+    
+    def __init__(self, features_dict: dict, labels: np.ndarray):
+        print(f"  🔧 开始创建PushDataset...")
+        print(f"    📊 输入特征数量: {len(features_dict)}")
+        print(f"    📊 标签数量: {len(labels)}")
+        
+        self.features_dict = features_dict
+        self.labels = labels
+        self.length = len(labels)
+        
+        # 转换为tensor
+        print(f"  🔄 开始转换特征为tensor...")
+        self.features_tensor = {}
+        
+        for i, (name, values) in enumerate(features_dict.items()):
+            print(f"    📊 转换特征 {i+1}/{len(features_dict)}: {name}")
+            print(f"      输入类型: {type(values)}, 形状: {values.shape}, dtype: {values.dtype}")
+            
+            try:
+                if isinstance(values, np.ndarray):
+                    if values.dtype in [np.int32, np.int64]:
+                        tensor = torch.from_numpy(values).long()
+                    elif values.dtype in [np.float32, np.float64]:
+                        tensor = torch.from_numpy(values.astype(np.int64)).long()
+                    else:
+                        tensor = torch.from_numpy(values.astype(np.int64)).long()
+                else:
+                    tensor = torch.tensor(values, dtype=torch.long)
+                
+                self.features_tensor[name] = tensor
+                print(f"      ✅ 转换成功，tensor形状: {tensor.shape}, dtype: {tensor.dtype}")
+                
+            except Exception as e:
+                print(f"      ❌ 转换失败: {e}")
+                # 尝试备用方案
+                try:
+                    if isinstance(values, np.ndarray):
+                        tensor = torch.from_numpy(values.astype(np.int64)).long()
+                    else:
+                        tensor = torch.tensor(values, dtype=torch.long)
+                    self.features_tensor[name] = tensor
+                    print(f"      ✅ 备用转换成功，tensor形状: {tensor.shape}")
+                except Exception as e2:
+                    print(f"      ❌ 备用转换也失败: {e2}")
+                    raise e2
+        
+        print(f"  🔄 转换标签为tensor...")
+        try:
+            self.labels_tensor = torch.from_numpy(labels).float()
+            print(f"    ✅ 标签转换成功，形状: {self.labels_tensor.shape}")
+        except Exception as e:
+            print(f"    ❌ 标签转换失败: {e}")
+            raise e
+        
+        print(f"  ✅ PushDataset创建完成！")
+    
+    def __len__(self):
+        return self.length
+    
+    def __getitem__(self, idx):
+        features = {name: tensor[idx] for name, tensor in self.features_tensor.items()}
+        label = self.labels_tensor[idx]
+        return features, label
+
+
+def prepare_afm_dataset(df: pd.DataFrame, feat_config: dict, batch_size: int = 256) -> tuple:
+    """
+    准备AFM训练数据
+    """
+    # 获取特征配置
+    if 'pipelines' in feat_config:
+        pipelines = feat_config['pipelines']
+    elif 'process' in feat_config and 'pipelines' in feat_config['process']:
+        pipelines = feat_config['process']['pipelines']
+    else:
+        raise ValueError("无法找到特征配置中的 pipelines")
+    
+    pipeline_feats = {p['feat_name']: p for p in pipelines}
+    features_dict = {}
+    
+    for feat_name, config in pipeline_feats.items():
+        if feat_name not in df.columns:
+            continue
+        
+        feat_type = config.get('feat_type', 'sparse')
+        
+        if feat_type == 'sparse':
+            # 单值特征
+            values = df[feat_name].values.astype(np.int32)
+            features_dict[feat_name] = values
+            
+        elif feat_type == 'varlen_sparse':
+            # 变长特征，需要padding
+            sequences = df[feat_name].tolist()
+            max_len = max(len(seq) if isinstance(seq, list) else 1 for seq in sequences)
+            
+            padded_sequences = []
+            for seq in sequences:
+                if isinstance(seq, list):
+                    padded = seq + [0] * (max_len - len(seq))
+                else:
+                    padded = [int(seq)] + [0] * (max_len - 1)
+                padded_sequences.append(padded[:max_len])
+            
+            features_dict[feat_name] = np.array(padded_sequences, dtype=np.int32)
+    
+    # 准备标签
+    labels = df['label'].values.astype(np.float32)
+    
+    return features_dict, labels
+
+
+def train_afm_model(model, train_loader, val_loader, train_config: dict, device):
+    """
+    训练AFM模型
+    """
+    # 优化器配置
+    training_config = train_config.get('training', {})
+    lr = training_config.get('lr', 0.001)
+    weight_decay = training_config.get('weight_decay', 0.001)
+    epochs = training_config.get('epochs', 2)
+    
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    criterion = nn.BCELoss()
+    
+    print(f"\n🚀 开始AFM模型训练...")
+    print(f"  学习率: {lr}")
+    print(f"  权重衰减: {weight_decay}")
+    print(f"  训练轮数: {epochs}")
+    print(f"  设备: {device}")
+    
+    # 添加调试信息
+    print(f"\n🔧 训练数据检查:")
+    print(f"  训练批次数: {len(train_loader)}")
+    print(f"  验证批次数: {len(val_loader)}")
+    
+    # 测试第一个batch以检查数据格式
+    print(f"\n🧪 测试第一个batch...")
+    try:
+        first_batch = next(iter(train_loader))
+        features, labels = first_batch
+        print(f"  ✅ 数据加载成功")
+        print(f"  特征数量: {len(features)}")
+        print(f"  标签形状: {labels.shape}")
+        
+        # 测试模型前向传播
+        print(f"  🧠 测试模型前向传播...")
+        model.eval()
+        with torch.no_grad():
+            # 移动到设备
+            features_device = {name: tensor.to(device) for name, tensor in features.items()}
+            labels_device = labels.to(device)
+            
+            start_time = time.time()
+            predictions = model(features_device)
+            forward_time = time.time() - start_time
+            
+            print(f"  ✅ 前向传播成功，耗时: {forward_time:.2f}秒")
+            print(f"  预测形状: {predictions.shape}")
+            print(f"  预测范围: [{predictions.min():.4f}, {predictions.max():.4f}]")
+            
+    except Exception as e:
+        print(f"  ❌ 数据或模型测试失败: {e}")
+        return None
+    
+    best_val_auc = 0.0
+    train_losses = []
+    val_aucs = []
+    
+    for epoch in range(epochs):
+        print(f"\n🔄 开始第 {epoch+1}/{epochs} 轮训练...")
+        
+        # 训练阶段
+        model.train()
+        total_loss = 0.0
+        train_predictions = []
+        train_targets = []
+        
+        # 添加时间统计
+        epoch_start_time = time.time()
+        batch_times = []
+        
+        for batch_idx, (features, labels) in enumerate(train_loader):
+            batch_start_time = time.time()
+            
+            # 移动到设备
+            features = {name: tensor.to(device) for name, tensor in features.items()}
+            labels = labels.to(device)
+            
+            # 前向传播
+            optimizer.zero_grad()
+            predictions = model(features)
+            loss = criterion(predictions, labels)
+            
+            # 反向传播
+            loss.backward()
+            optimizer.step()
+            
+            total_loss += loss.item()
+            train_predictions.extend(predictions.detach().cpu().numpy())
+            train_targets.extend(labels.detach().cpu().numpy())
+            
+            batch_time = time.time() - batch_start_time
+            batch_times.append(batch_time)
+            
+            # 更频繁的进度输出
+            if batch_idx % 10 == 0:  # 每10个batch输出一次
+                avg_batch_time = np.mean(batch_times[-10:])  # 最近10个batch的平均时间
+                eta = avg_batch_time * (len(train_loader) - batch_idx - 1)  # 预估剩余时间
+                print(f"    Batch {batch_idx}/{len(train_loader)}, Loss: {loss.item():.4f}, "
+                      f"Time: {batch_time:.2f}s, ETA: {eta:.1f}s")
+        
+        # 计算训练指标
+        train_auc = roc_auc_score(train_targets, train_predictions)
+        avg_train_loss = total_loss / len(train_loader)
+        train_losses.append(avg_train_loss)
+        epoch_time = time.time() - epoch_start_time
+        
+        print(f"\n⏱️  第{epoch+1}轮训练完成，耗时: {epoch_time:.1f}秒")
+        print(f"    平均batch时间: {np.mean(batch_times):.2f}秒")
+        
+        # 验证阶段
+        print(f"🔍 开始验证...")
+        model.eval()
+        val_predictions = []
+        val_targets = []
+        val_loss = 0.0
+        
+        val_start_time = time.time()
+        with torch.no_grad():
+            for batch_idx, (features, labels) in enumerate(val_loader):
+                features = {name: tensor.to(device) for name, tensor in features.items()}
+                labels = labels.to(device)
+                
+                predictions = model(features)
+                loss = criterion(predictions, labels)
+                
+                val_loss += loss.item()
+                val_predictions.extend(predictions.cpu().numpy())
+                val_targets.extend(labels.cpu().numpy())
+                
+                if batch_idx % 20 == 0:
+                    print(f"    验证Batch {batch_idx}/{len(val_loader)}")
+        
+        val_time = time.time() - val_start_time
+        print(f"✅ 验证完成，耗时: {val_time:.1f}秒")
+        
+        # 计算验证指标
+        val_auc = roc_auc_score(val_targets, val_predictions)
+        avg_val_loss = val_loss / len(val_loader)
+        val_aucs.append(val_auc)
+        
+        print(f"\n📊 Epoch {epoch+1}/{epochs} 结果:")
+        print(f"  训练损失: {avg_train_loss:.4f}")
+        print(f"  训练AUC: {train_auc:.4f}")
+        print(f"  验证损失: {avg_val_loss:.4f}")
+        print(f"  验证AUC: {val_auc:.4f}")
+        print(f"  总耗时: {epoch_time + val_time:.1f}秒")
+        
+        # 保存最佳模型
+        if val_auc > best_val_auc:
+            best_val_auc = val_auc
+            print(f"  🎉 新的最佳验证AUC: {best_val_auc:.4f}")
+    
+    return {
+        'train_losses': train_losses,
+        'val_aucs': val_aucs,
+        'best_val_auc': best_val_auc
+    }
+
+
+# ---------------------------------------------------------------------------- #
+# 6. AFM模型训练主流程
+# ---------------------------------------------------------------------------- #
+
+print("\n" + "="*80)
+print("🔥 开始AFM模型训练")
+print("="*80)
+
+# 检查设备
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"🖥️  使用设备: {device}")
+
+# 确保有标签
+if 'label' not in df_raw.columns:
+    df_raw['label'] = df_raw['log_type'].apply(lambda x: 1 if x == 'PC' else 0)
+
+# 1. 重新处理数据 (使用feat.yml配置)
+print("\n🔄 为AFM模型处理数据...")
+df_afm_processed, _ = process_feature_pipelines(df_raw, deep_feat_config)
+
+print(f"📊 AFM数据统计:")
+print(f"  总样本数: {len(df_afm_processed):,}")
+print(f"  正样本数: {df_afm_processed['label'].sum():,}")
+print(f"  负样本数: {(df_afm_processed['label'] == 0).sum():,}")
+print(f"  正样本比例: {df_afm_processed['label'].mean():.3f}")
+
+# 2. 准备AFM数据集
+print("\n🔧 准备AFM数据集...")
+features_dict, labels = prepare_afm_dataset(df_afm_processed, deep_feat_config)
+
+print(f"特征字段: {list(features_dict.keys())}")
+for name, values in features_dict.items():
+    print(f"  - {name}: shape={values.shape}, dtype={values.dtype}")
+
+# 3. 创建训练/验证分割
+validation_split = train_config.get('training', {}).get('validation_split', 0.2)
+train_size = int((1 - validation_split) * len(labels))
+
+print(f"\n📊 数据分割:")
+print(f"  训练集: {train_size:,} ({(1-validation_split)*100:.1f}%)")
+print(f"  验证集: {len(labels)-train_size:,} ({validation_split*100:.1f}%)")
+
+# 分割数据
+train_features = {name: values[:train_size] for name, values in features_dict.items()}
+val_features = {name: values[train_size:] for name, values in features_dict.items()}
+train_labels = labels[:train_size]
+val_labels = labels[train_size:]
+
+# 4. 创建PyTorch数据集和数据加载器
+batch_size = train_config.get('training', {}).get('batch_size', 256)
+
+# 如果是CPU训练，减少batch_size以提高速度
+if device.type == 'cpu':
+    batch_size = min(batch_size, 16)  # CPU上使用更小的batch_size
+    print(f"⚠️  检测到CPU训练，减少batch_size到: {batch_size}")
+
+print(f"\n📦 创建数据集...")
+train_dataset = PushDataset(train_features, train_labels)
+val_dataset = PushDataset(val_features, val_labels)
+
+print(f"  训练数据集大小: {len(train_dataset):,}")
+print(f"  验证数据集大小: {len(val_dataset):,}")
+
+# 测试数据集
+print(f"🧪 测试数据集...")
+try:
+    sample_features, sample_label = train_dataset[0]
+    print(f"  ✅ 数据集创建成功")
+    print(f"  样本特征数量: {len(sample_features)}")
+    print(f"  样本标签: {sample_label}")
+except Exception as e:
+    print(f"  ❌ 数据集测试失败: {e}")
+
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
+val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+
+print(f"  训练批次数: {len(train_loader)}")
+print(f"  验证批次数: {len(val_loader)}")
+print(f"  使用batch_size: {batch_size}")
+
+# 测试数据加载器
+print(f"🧪 测试数据加载器...")
+try:
+    start_time = time.time()
+    first_batch = next(iter(train_loader))
+    load_time = time.time() - start_time
+    print(f"  ✅ 数据加载成功，耗时: {load_time:.2f}秒")
+except Exception as e:
+    print(f"  ❌ 数据加载失败: {e}")
+
+# 5. 创建AFM模型
+print("\n🏗️  构建AFM模型...")
+
+# 获取特征配置
+if 'pipelines' in deep_feat_config:
+    afm_pipelines = deep_feat_config['pipelines']
+elif 'process' in deep_feat_config and 'pipelines' in deep_feat_config['process']:
+    afm_pipelines = deep_feat_config['process']['pipelines']
+else:
+    raise ValueError("无法找到AFM特征配置中的 pipelines")
+
+# 添加AFM特定配置到train_config
+afm_train_config = train_config.copy()
+if 'model' not in afm_train_config:
+    afm_train_config['model'] = {}
+afm_train_config['model']['attention_dim'] = 32  # AFM注意力维度（减少计算量）
+afm_train_config['model']['dropout_rate'] = 0.2  # AFM的dropout率
+
+# 创建模型
+afm_model = PushAFMModel(afm_pipelines, afm_train_config, verbose=True)
+afm_model.to(device)
+
+print(f"\n📋 AFM模型架构:")
+print(f"  🔧 特征字段数: {afm_model.num_fields}")
+print(f"  📊 嵌入维度: {afm_model.emb_dim}")
+print(f"  🧠 注意力维度: {afm_train_config['model']['attention_dim']}")
+print(f"  💧 Dropout率: {afm_train_config['model']['dropout_rate']}")
+print(f"  📊 总参数量: {sum(p.numel() for p in afm_model.parameters()):,}")
+
+# 6. 训练模型
+training_results = train_afm_model(afm_model, train_loader, val_loader, afm_train_config, device)
+
+# 7. 输出最终结果
+print("\n" + "="*80)
+print("🎉 AFM模型训练完成！")
+print("="*80)
+
+print(f"\n📊 最终结果:")
+print(f"  最佳验证AUC: {training_results['best_val_auc']:.4f}")
+print(f"  最终训练损失: {training_results['train_losses'][-1]:.4f}")
+print(f"  AUC提升曲线: {[f'{auc:.4f}' for auc in training_results['val_aucs']]}")
+
+print(f"\n🔄 模型对比:")
+print(f"  🌳 树模型(LightGBM): 基于config.yml特征工程")
+print(f"  🧠 MLP模型: 基于feat.yml特征工程")
+print(f"  🔥 AFM模型: 基于feat.yml特征工程 + 注意力机制")
+print(f"     └─ 最佳验证AUC: {training_results['best_val_auc']:.4f}")
+
+print(f"\n✅ AFM模型训练流水线完成！")
+print(f"💡 AFM通过注意力机制自动学习特征交互的重要性，")
+print(f"   相比传统FM模型能更好地处理特征交互！")
