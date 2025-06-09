@@ -161,7 +161,7 @@ elif 'process' in feat_config and 'pipelines' in feat_config['process']:
     # config.yml 格式
     example_pipeline = feat_config['process']['pipelines'][0]
 else:
-    print("⚠️ 无法找到特征配置格式")
+    print("无法找到特征配置格式")
     example_pipeline = None
 
 if example_pipeline:
