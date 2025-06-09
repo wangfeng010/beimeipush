@@ -45,7 +45,7 @@ pipelines:
     col_out: watchlists
     func_name: fillna
     func_parameters:
-      na_value: null_0 & null_0
+      na_value: 'null_0 & null_0'
   - col_in: watchlists
     col_out: watchlists
     func_name: split
@@ -107,7 +107,7 @@ pipelines:
     col_out: prefer_bid
     func_name: fillna
     func_parameters:
-      na_value: null#0
+      na_value: 'null#0'
   - col_in: prefer_bid
     col_out: prefer_bid
     func_name: split
@@ -144,7 +144,7 @@ pipelines:
     col_out: holdings
     func_name: fillna
     func_parameters:
-      na_value: null,0
+      na_value: 'null,0'
   - col_in: holdings
     col_out: holdings
     func_name: split
@@ -181,7 +181,7 @@ pipelines:
     col_out: user_propernoun
     func_name: fillna
     func_parameters:
-      na_value: null#0
+      na_value: 'null#0'
   - col_in: user_propernoun
     col_out: user_propernoun
     func_name: split
